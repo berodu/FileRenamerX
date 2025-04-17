@@ -1,0 +1,30 @@
+# API 키 및 민감한 정보
+vision-api-key/
+chatgpt-api-key/
+gemini-api-key/
+*api_key*
+
+# 파이썬 캐시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 작업 및 결과 파일
+작업폴더/
+작업폴더1/
+작업폴더2/
+작업폴더3/
+output/
+*.xlsx
+*.docx
+
+# 빌드 결과물
+build/
+dist/
+*.spec
+
+# 로그 파일
+error_log.txt
+
+# 임시 파일
+*.tmp 
