@@ -1,6 +1,6 @@
 # Python
 __pycache__/
-# *.py[cod]  # .py 파일을 제외하지 않도록 주석 처리
+*.py[cod]
 *$py.class
 *.so
 .Python
@@ -20,51 +20,18 @@ wheels/
 .installed.cfg
 *.egg
 
-# API Keys
+# API Keys - 민감한 정보
 vision-api-key/
 chatgpt-api-key/
 gemini-api-key/
-# API 키 파일만 제외하고 다른 JSON 파일은 포함
-vision-api-key/*.json
-chatgpt-api-key/*.json
-gemini-api-key/*.json
-# *.json  # 모든 JSON 파일을 제외하지 않도록 주석 처리
-*_key.txt
-*_api_key.txt
 
-# Virtual Environment
-venv/
-env/
-ENV/
-
-# IDE
-.idea/
-.vscode/
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# macOS
-.DS_Store
-
-# Project specific
+# 작업용 폴더와 결과물
 output/
 작업폴더/
 작업폴더1/
 작업폴더2/
 작업폴더3/
-*.xlsx
-*.docx
-error_log.txt
 
-# 명시적으로 포함할 파일
-!main.py
-!app_gui.py
-!video_processor.py
-!image_analyzer.py
-!excel_processor.py
-!inspect_status.py
-!prompt.txt
-!run.py 
+# 임시 파일
+*.xlsx
+*.docx 
