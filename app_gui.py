@@ -704,6 +704,13 @@ class TaskieXApp:
         # 프레임 시간 설정 (파일명 변경 모드에서만 사용)
         frame_times = self.frame_times_value
         
+        # 프레임 시간 검증 (리스트를 문자열로 변환)
+        frame_times_str = ','.join(map(str, frame_times))
+        frame_times = validate_frame_times(frame_times_str)
+        if not frame_times:
+            messagebox.showerror("오류", "프레임 시간이 올바르지 않습니다.")
+            return
+        
         # 파일명 변경 모드
         if current_mode == "rename":
             # 작업 폴더 내 파일 확인
@@ -720,13 +727,9 @@ class TaskieXApp:
                     return
             
             # API 키 유효성 확인
-            if not check_api_keys():
+            missing_keys = check_api_keys()
+            if missing_keys:  # 비어있지 않은 경우에만 오류
                 messagebox.showerror("오류", "API 키가 설정되지 않았거나 유효하지 않습니다.")
-                return
-                
-            # 프레임 시간 검증
-            if not validate_frame_times(frame_times):
-                messagebox.showerror("오류", "프레임 시간이 올바르지 않습니다.")
                 return
                 
             # 임시 디렉토리 생성
@@ -916,10 +919,12 @@ class TaskieXApp:
                     )
                     
                     if result:
-                        file_changes.append((original_filename, result.get('new_filename')))
+                        # 결과에서 필요한 정보만 가져옴 (file_changes는 이미 process_video_file에서 추가됨)
                         total_processed += 1
                         video_processed += 1
                         image_counter = result.get('image_counter')
+                        last_video_name = result.get('last_video_name')
+                        last_video_base_name = result.get('last_video_base_name')
                         
                 elif is_image and last_video_name:
                     # 이미지 파일 처리 (직전 동영상 파일명 기준으로 변경)
@@ -1052,13 +1057,13 @@ class TaskieXApp:
                     
                     # 변경 결과 기록
                     file_changes.append((original_filename, new_filename))
-                    total_processed += 1
-                    video_processed += 1
                     
                     return {
                         'success': True,
                         'new_filename': new_filename,
-                        'image_counter': image_counter
+                        'image_counter': image_counter,
+                        'last_video_name': last_video_name,
+                        'last_video_base_name': last_video_base_name
                     }
                 except PermissionError:
                     print(f"❌ 파일 이름 변경 권한이 없습니다.")
