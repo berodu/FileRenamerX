@@ -15,6 +15,7 @@ import re
 import subprocess
 import psutil
 import logging
+import random
 
 # 기존 분석기 및 비디오 프로세서 임포트
 from video_processor import VideoProcessor
@@ -688,122 +689,103 @@ class TaskieXApp:
 
     def start_process(self):
         """작업 시작"""
-        # 이미 실행 중인지 확인
-        if self.is_running:
-            return
-        
-        # 현재 작업 모드
-        current_mode = self.work_mode.get()
-        
-        # 작업 폴더 확인
-        work_dir = self.folder_path.get().strip()
-        if not work_dir or not os.path.exists(work_dir):
-            messagebox.showerror("오류", "작업 폴더가 존재하지 않습니다.")
-            return
-        
-        # 프레임 시간 설정 (파일명 변경 모드에서만 사용)
-        frame_times = self.frame_times_value
-        
-        # 프레임 시간 검증 (리스트를 문자열로 변환)
-        frame_times_str = ','.join(map(str, frame_times))
-        frame_times = validate_frame_times(frame_times_str)
-        if not frame_times:
-            messagebox.showerror("오류", "프레임 시간이 올바르지 않습니다.")
-            return
-        
-        # 파일명 변경 모드
-        if current_mode == "rename":
-            # 작업 폴더 내 파일 확인
-            if not self.selected_files:
-                # 폴더 내 모든 비디오/이미지 파일 확인
-                all_files = []
-                for f in os.listdir(work_dir):
-                    file_path = os.path.join(work_dir, f)
-                    if os.path.isfile(file_path) and (is_valid_video_file(file_path) or is_valid_image_file(file_path)):
-                        all_files.append(file_path)
-                        
-                if not all_files:
-                    messagebox.showerror("오류", "작업 폴더에 처리할 비디오/이미지 파일이 없습니다.")
-                    return
-            
-            # API 키 유효성 확인
-            missing_keys = check_api_keys()
-            if missing_keys:  # 비어있지 않은 경우에만 오류
-                messagebox.showerror("오류", "API 키가 설정되지 않았거나 유효하지 않습니다.")
+        try:
+            # 이미 실행 중인지 확인
+            if self.is_running:
                 return
                 
-            # 임시 디렉토리 생성
-            try:
-                self.cleanup_temp_dir()  # 기존 임시 폴더 정리
-                self.temp_dir = tempfile.mkdtemp(prefix="taskiex_temp_")
-                output_dir = self.temp_dir
-                logger.info(f"임시 폴더 생성: {self.temp_dir}")
-            except Exception as e:
-                messagebox.showerror("오류", f"임시 폴더 생성 실패: {str(e)}")
+            # 작업 폴더 확인
+            work_dir = self.folder_path.get()
+            if not work_dir or not os.path.exists(work_dir):
+                messagebox.showerror("오류", "작업 폴더를 선택해주세요.")
                 return
+                
+            # 현재 모드 확인
+            current_mode = self.work_mode.get()
             
-        else:  # update_pipe 또는 update_status 모드
-            # 엑셀 파일 선택 확인
-            excel_path = self.excel_path.get()
-            if not excel_path:
+            # 엑셀 모드인 경우 엑셀 파일 선택 여부 확인
+            if current_mode == "excel" and not self.excel_path.get():
                 messagebox.showerror("오류", "엑셀 파일을 선택해주세요.")
                 return
-            
-            if not os.path.exists(excel_path):
-                messagebox.showerror("오류", f"선택한 엑셀 파일이 존재하지 않습니다: {excel_path}")
-                return
                 
-            # 엑셀 파일이 열려있는지 확인하고 닫기
-            print(f"✓ 엑셀 파일 확인 중: {os.path.basename(excel_path)}")
-            self.close_excel_file(excel_path)
-        
-        # UI 상태 업데이트
-        self.update_ui_for_processing(True)
-        
-        # 로그 초기화
-        if hasattr(self, 'redirect'):
-            self.redirect.clear()
-        
-        # 시작 로그 출력
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{current_time}] 작업 시작")
-        
-        # 모드별 작업 스레드 시작
-        if current_mode == "rename":
-            print(f"• 모드: 파일명 변경")
-            print(f"• 분석 방법: Vision API + ChatGPT")
-            print(f"• 프레임 시간: {','.join(map(str, frame_times))}초")
-            print("")
+            # UI 업데이트
+            self.update_ui_for_processing(True)
             
-            # 파일명 변경 모드 작업 스레드 시작
-            self.process_thread = threading.Thread(
-                target=self.process_videos, 
-                args=(work_dir, output_dir, frame_times)
-            )
-        elif current_mode == "update_pipe":  # 이상 배관 업데이트 모드
-            print(f"• 모드: 이상 배관 업데이트")
-            print(f"• 엑셀 파일: {os.path.basename(self.excel_path.get())}")
-            print("")
+            # 출력 폴더 생성
+            output_dir = os.path.join(work_dir, "output")
+            os.makedirs(output_dir, exist_ok=True)
             
-            # 이미지 삽입 모드 작업 스레드 시작
-            self.process_thread = threading.Thread(
-                target=self.process_excel, 
-                args=(work_dir, self.excel_path.get())
-            )
-        else:  # update_status 모드 (작업 현황 업데이트)
-            print(f"• 모드: 작업 현황 업데이트")
-            print(f"• 엑셀 파일: {os.path.basename(self.excel_path.get())}")
-            print("")
+            # 프레임 시간 설정
+            frame_times = [2, 3, 5]  # 기본 프레임 시간
             
-            # 작업 현황 업데이트 모드 작업 스레드 시작
-            self.process_thread = threading.Thread(
-                target=self.update_status_excel, 
-                args=(work_dir, self.excel_path.get())
+            # 작업 시작 시간 기록
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"\n[{current_time}] 작업 시작")
+            
+            # 파일명 변경 모드
+            if current_mode == "rename":
+                # 작업 폴더 내 파일 확인
+                if not self.selected_files:
+                    # 폴더 내 모든 비디오/이미지 파일 확인
+                    all_files = []
+                    for f in os.listdir(work_dir):
+                        file_path = os.path.join(work_dir, f)
+                        if os.path.isfile(file_path) and (is_valid_video_file(file_path) or is_valid_image_file(file_path)):
+                            all_files.append(file_path)
+                            
+                    if not all_files:
+                        messagebox.showerror("오류", "작업 폴더에 처리할 비디오/이미지 파일이 없습니다.")
+                        return
+                    
+                    # 처리량 조절: 파일 수가 많을 경우 제한
+                    file_limit = 10  # 한 번에 처리할 최대 파일 수
+                    if len(all_files) > file_limit:
+                        result = messagebox.askquestion(
+                            "처리량 조절",
+                            f"총 {len(all_files)}개 파일이 발견되었습니다. 처리량 조절을 위해 {file_limit}개로 제한하시겠습니까?",
+                            icon='warning'
+                        )
+                        if result == 'yes':
+                            all_files = all_files[:file_limit]
+                            print(f"⚠️ 처리량 조절: 총 {len(all_files)}개 파일 중 {file_limit}개만 처리합니다.")
+                
+                # API 키 유효성 확인
+                missing_keys = check_api_keys()
+                if missing_keys:  # 비어있지 않은 경우에만 오류
+                    messagebox.showerror("오류", "API 키가 설정되지 않았거나 유효하지 않습니다.")
+                    return
+                    
+                # 임시 디렉토리 생성
+                try:
+                    self.cleanup_temp_dir()  # 기존 임시 폴더 정리
+                    self.temp_dir = tempfile.mkdtemp(prefix="taskiex_temp_")
+                    output_dir = self.temp_dir
+                    logger.info(f"임시 폴더 생성: {self.temp_dir}")
+                except Exception as e:
+                    messagebox.showerror("오류", f"임시 폴더 생성 실패: {str(e)}")
+                    return
+                    
+                # API 요청 간 제한 시간 설정 (처리량 조절)
+                min_api_delay = 1  # API 요청 사이의 최소 시간 (초)
+                print(f"⚠️ 처리량 조절: API 요청 사이에 최소 {min_api_delay}초 간격을 유지합니다.")
+            
+            # 작업 실행 플래그 설정
+            self.running = True
+            self.is_running = True
+            
+            # 멀티스레딩으로 작업 실행
+            thread = threading.Thread(
+                target=self.process_in_thread,
+                args=(current_mode, work_dir, output_dir, frame_times)
             )
-        
-        # 스레드 데몬 설정 및 시작
-        self.process_thread.daemon = True
-        self.process_thread.start()
+            thread.daemon = True
+            thread.start()
+            
+        except Exception as e:
+            messagebox.showerror("오류", f"작업 시작 중 오류가 발생했습니다: {str(e)}")
+            self.is_running = False
+            self.running = False
+            self.update_ui_for_processing(False)
 
     def update_ui_for_processing(self, is_processing):
         """처리 중 UI 상태 업데이트"""
@@ -1013,7 +995,7 @@ class TaskieXApp:
             frame_paths = video_processor.extract_frames(file_rel_path, frame_times)
             
             if not frame_paths:
-                print(f"❌ 프레임 추출 실패")
+                print(f"❌ 프레임 추출 실패 - 비디오 파일이 손상되었거나 접근할 수 없습니다.")
                 return None
             
             # 각 프레임 분석
@@ -1065,18 +1047,20 @@ class TaskieXApp:
                         'last_video_name': last_video_name,
                         'last_video_base_name': last_video_base_name
                     }
-                except PermissionError:
-                    print(f"❌ 파일 이름 변경 권한이 없습니다.")
-                except FileNotFoundError:
-                    print(f"❌ 원본 파일을 찾을 수 없습니다.")
+                except PermissionError as e:
+                    print(f"❌ 파일 이름 변경 권한이 없습니다: {str(e)}")
+                except FileNotFoundError as e:
+                    print(f"❌ 원본 파일을 찾을 수 없습니다: {str(e)}")
                 except Exception as e:
                     print(f"❌ 파일 이름 변경 실패: {str(e)}")
             else:
-                print(f"❌ 유효한 결과 없음")
+                print(f"❌ 유효한 결과 없음 - 모든 프레임 분석에 실패했습니다. 다음 파일로 진행합니다.")
         
         except Exception as e:
             print(f"❌ 비디오 처리 중 오류: {str(e)}")
-            
+            import traceback
+            print(f"❌ 오류 상세정보: {traceback.format_exc()}")
+        
         return None
     
     def analyze_video_frames(self, frame_paths, analyzer):
@@ -1085,43 +1069,83 @@ class TaskieXApp:
         
         # 각 프레임 분석
         print(f"  - 프레임 분석 중... ({len(frame_paths)}개)")
+        
+        # 처리량 조절 - 프레임 제한 (최대 3개 프레임만 처리)
+        if len(frame_paths) > 3:
+            print(f"  ⚠️ 처리량 조절: {len(frame_paths)}개 프레임 중 3개만 분석합니다.")
+            frame_paths = frame_paths[:3]
+        
         for i, frame_path in enumerate(frame_paths, 1):
             if not self.running:
                 break
-                
+            
             # 파일 존재 확인
             if not os.path.exists(frame_path):
+                print(f"  ❌ 프레임 파일이 존재하지 않습니다: {frame_path}")
                 continue
             
-            # 분석 시도 (최대 3회)
+            # 분석 시도 (최대 5회, 이전 3회에서 증가)
             retry_count = 0
-            max_retries = 3
+            max_retries = 5
             extracted_info = None
+            base_delay = 2  # 기본 대기 시간 (초)
+            
+            print(f"    프레임 {i}/{len(frame_paths)} 분석 중...")
             
             while retry_count < max_retries and extracted_info is None:
-                if retry_count > 0:
-                    print(f"    재시도 중... ({retry_count}/{max_retries})")
-                    time.sleep(2)  # API 호출 간 딜레이
-                
                 try:
-                    print(f"    프레임 {i}/{len(frame_paths)} 분석 중...")
+                    # 지수 백오프 적용 (재시도마다 대기 시간 증가)
+                    if retry_count > 0:
+                        # 2^n 공식 적용 (2, 4, 8, 16, 32초)
+                        current_delay = base_delay * (2 ** (retry_count - 1))
+                        # 약간의 랜덤성 추가 (지터)
+                        jitter = random.uniform(0.8, 1.2)
+                        delay_with_jitter = current_delay * jitter
+                        
+                        print(f"    ⚠️ API 요청 재시도 {retry_count}/{max_retries} (대기: {delay_with_jitter:.2f}초)")
+                        time.sleep(delay_with_jitter)
+                    
+                    # API 호출
                     extracted_info = analyzer.analyze_image(frame_path)
+                    
+                    # 분석 결과 출력
+                    if extracted_info:
+                        print(f"    ✓ 분석 성공: {extracted_info}")
+                    else:
+                        print(f"    ❌ 분석 결과가 없습니다.")
+                        retry_count += 1
                 except Exception as e:
-                    print(f"❌ 분석 오류: {str(e)}")
                     retry_count += 1
-                    continue
-                
-                # 분석 결과 출력
-                if extracted_info:
-                    print(f"    결과: {extracted_info}")
-                
-                retry_count += 1
+                    error_message = str(e)
+                    
+                    # 특정 오류 유형 감지 및 로깅
+                    if "429" in error_message or "rate limit" in error_message.lower() or "too many requests" in error_message.lower():
+                        print(f"    ❌ API 요청 한도 초과 (Rate Limit): {error_message}")
+                    elif "timeout" in error_message.lower() or "connection" in error_message.lower():
+                        print(f"    ❌ 네트워크 연결 오류: {error_message}")
+                    elif "authentication" in error_message.lower() or "auth" in error_message.lower() or "key" in error_message.lower():
+                        print(f"    ❌ 인증 오류: {error_message}")
+                    else:
+                        print(f"    ❌ 분석 오류: {error_message}")
             
+            # 최종 결과 처리
             if extracted_info:
                 video_results.append(extracted_info)
             else:
-                print(f"❌ 분석 실패")
-                
+                print(f"    ❌ 프레임 {i} 분석에 모든 시도가 실패했습니다.")
+            
+            # 처리량 조절 - 프레임 간 대기 시간 추가
+            if i < len(frame_paths) and extracted_info:
+                delay_between_frames = 1  # 프레임 간 2초 대기
+                print(f"    ✓ 다음 프레임 분석 전 {delay_between_frames}초 대기 중...")
+                time.sleep(delay_between_frames)
+        
+        # 결과 요약
+        if video_results:
+            print(f"  ✓ 프레임 분석 완료: {len(video_results)}/{len(frame_paths)} 성공")
+        else:
+            print(f"  ❌ 모든 프레임 분석에 실패했습니다.")
+        
         return video_results
         
     def process_image_file(self, idx, total, file_full_path, original_filename, 
@@ -1967,7 +1991,7 @@ class TaskieXApp:
                         print(f"• {fname}: (오류) - 처리되지 않음")
                         # 파일 정보 추가
                         file_results[fname] = {
-                            "status": "건너뜀",
+                            "status": "건너뜀", 
                             "reason": "처리되지 않음"
                         }
                 
@@ -2009,6 +2033,31 @@ class TaskieXApp:
             print(traceback.format_exc())  # 디버깅을 위한 스택 트레이스 출력
         finally:
             self.finish_process()
+
+    def process_in_thread(self, current_mode, work_dir, output_dir, frame_times):
+        """별도 스레드에서 작업 실행"""
+        try:
+            # 모드에 따라 다른 처리 실행
+            if current_mode == "rename":
+                print(f"• 모드: 파일명 변경")
+                print(f"• 분석 방법: Vision API + ChatGPT")
+                print(f"• 프레임 시간: {', '.join(map(str, frame_times))}초")
+                print(f"• 처리량 조절 적용됨")
+                
+                # 파일명 변경 모드 작업 실행
+                self.process_videos(work_dir, output_dir, frame_times)
+            elif current_mode == "excel":
+                # 이미지 삽입 모드 작업 실행
+                excel_path = self.excel_path.get()
+                print(f"• 모드: 이미지 삽입")
+                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
+                
+                self.process_excel(work_dir, excel_path)
+            
+        except Exception as e:
+            print(f"\n❌ 예상치 못한 오류 발생: {str(e)}")
+            import traceback
+            print(traceback.format_exc())  # 디버깅을 위한 스택 트레이스 출력
 
 def main():
     """메인 함수: 애플리케이션 시작"""

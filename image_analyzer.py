@@ -6,6 +6,7 @@ import json
 import base64
 import requests
 import time
+import random
 from abc import ABC, abstractmethod
 from google.cloud import vision
 from google.oauth2 import service_account
@@ -135,27 +136,43 @@ class GoogleVisionAnalyzer(ImageAnalyzer):
         Returns:
             str: 이미지에서 추출된 정보
         """
-        max_retries = 3
+        max_retries = 5  # 최대 재시도 횟수 증가 (3 -> 5)
         retry_count = 0
+        base_delay = 2  # 기본 대기 시간
         
         while retry_count < max_retries:
             try:
                 # 파일 존재 확인
                 abs_path = self.check_file_exists(image_path)
                 if not abs_path:
+                    print(f"❌ [Vision API 오류] 유효하지 않은 이미지 파일: {image_path}")
                     return None
                     
                 # 이미지 로드
                 try:
                     with open(abs_path, 'rb') as image_file:
                         content = image_file.read()
-                except PermissionError:
+                except PermissionError as e:
+                    print(f"❌ [Vision API 오류] 파일 접근 권한이 없습니다: {str(e)}")
                     return None
-                except Exception:
+                except Exception as e:
+                    print(f"❌ [Vision API 오류] 이미지 로드 중 오류: {str(e)}")
                     return None
+                
+                # 지수 백오프 적용
+                if retry_count > 0:
+                    # 2^n 공식 적용 (2, 4, 8, 16, 32초)
+                    current_delay = base_delay * (2 ** (retry_count - 1))
+                    # 약간의 랜덤성 추가 (지터)
+                    jitter = random.uniform(0.8, 1.2)
+                    delay_with_jitter = current_delay * jitter
+                    
+                    print(f"  ⚠️ [Vision API 재시도] {retry_count}/{max_retries} (대기: {delay_with_jitter:.2f}초)")
+                    time.sleep(delay_with_jitter)
                 
                 # Vision API로 OCR 수행
                 try:
+                    print(f"  ✓ Vision API OCR 요청 중...")
                     image = vision.Image(content=content)
                     response = self.vision_client.text_detection(image=image)
                     
@@ -163,20 +180,20 @@ class GoogleVisionAnalyzer(ImageAnalyzer):
                         # 네트워크 관련 오류는 재시도
                         if any(err in response.error.message.lower() for err in ['network', 'timeout', 'connection']):
                             retry_count += 1
-                            time.sleep(1)  # 1초 대기 후 재시도
+                            print(f"❌ [Vision API 오류] 네트워크 오류: {response.error.message}")
                             continue
                         else:
+                            print(f"❌ [Vision API 오류] OCR 실패: {response.error.message}")
                             return None
-                except Exception:
+                except Exception as e:
                     retry_count += 1
-                    if retry_count < max_retries:
-                        time.sleep(1)  # 1초 대기 후 재시도
-                        continue
-                    return None
+                    print(f"❌ [Vision API 오류] API 호출 중 오류: {str(e)}")
+                    continue
                 
                 # OCR 결과 추출
                 texts = response.text_annotations
                 if not texts:
+                    print(f"❌ [Vision API 오류] 텍스트가 감지되지 않았습니다.")
                     return None
                 
                 # 전체 텍스트 추출 (첫 번째 항목은 전체 텍스트)
@@ -184,12 +201,16 @@ class GoogleVisionAnalyzer(ImageAnalyzer):
                 
                 # 텍스트가 비어있는지 확인
                 if not detected_text.strip():
+                    print(f"❌ [Vision API 오류] 추출된 텍스트가 비어있습니다.")
                     return None
+                
+                print(f"  ✓ OCR 텍스트 추출 완료 ({len(detected_text)} 자)")
                 
                 # ChatGPT API를 사용하여 텍스트 분석
                 system_msg = f"당신은 이미지에서 추출된 텍스트를 분석하여 필요한 정보를 추출하는 전문가입니다. 다음 지시에 따라 텍스트를 분석해주세요: {self.prompt}"
                 
                 try:
+                    print(f"  ✓ ChatGPT 분석 요청 중...")
                     chat_response = self.openai_client.chat.completions.create(
                         model="gpt-4o",
                         messages=[
@@ -202,29 +223,29 @@ class GoogleVisionAnalyzer(ImageAnalyzer):
                     
                     if chat_response and hasattr(chat_response, 'choices') and len(chat_response.choices) > 0:
                         extracted_info = chat_response.choices[0].message.content.strip()
+                        print(f"  ✓ [ChatGPT 분석 성공] 결과를 받았습니다.")
                         return extracted_info
                     else:
                         # ChatGPT API 응답 오류 재시도
                         retry_count += 1
-                        if retry_count < max_retries:
-                            time.sleep(1)  # 1초 대기 후 재시도
-                            continue
-                        return None
-                except Exception:
+                        print(f"❌ [ChatGPT 오류] 유효하지 않은 응답 형식입니다.")
+                        continue
+                except Exception as e:
                     # API 호출 오류 재시도
                     retry_count += 1
-                    if retry_count < max_retries:
-                        time.sleep(1)  # 1초 대기 후 재시도
-                        continue
-                    return None
-                
-            except Exception:
-                retry_count += 1
-                if retry_count < max_retries:
-                    time.sleep(1)  # 1초 대기 후 재시도
+                    print(f"❌ [ChatGPT 오류] API 호출 중 오류: {str(e)}")
+                    
+                    # 429 에러 감지 (Too Many Requests)
+                    if "429" in str(e) or "rate limit" in str(e).lower() or "too many requests" in str(e).lower():
+                        print(f"⚠️ [ChatGPT 오류] 요청 한도 초과 (Rate Limit) - 지수 백오프 적용 중...")
                     continue
-                return None
+                
+            except Exception as e:
+                retry_count += 1
+                print(f"❌ [Vision+ChatGPT 오류] 예상치 못한 오류 발생: {str(e)}")
+                continue
         
+        print(f"❌ [Vision+ChatGPT 오류] 최대 재시도 횟수({max_retries}회)를 초과했습니다. 분석에 실패했습니다.")
         return None
 
 
@@ -404,32 +425,38 @@ class GeminiAnalyzer(ImageAnalyzer):
         Returns:
             str: 이미지에서 추출된 정보
         """
-        max_retries = 3
+        max_retries = 5  # 최대 재시도 횟수를 3에서 5로 증가
         retry_count = 0
+        base_delay = 2  # 기본 대기 시간 (초)
         
         while retry_count < max_retries:
             try:
                 # 파일 존재 확인
                 abs_path = self.check_file_exists(image_path)
                 if not abs_path:
+                    print(f"❌ [Gemini API 오류] 유효하지 않은 이미지 파일: {image_path}")
                     return None
-                    
+                
                 # 이미지 파일 크기 제한 확인 (Gemini API의 파일 크기 제한)
                 try:
                     file_size = os.path.getsize(abs_path)
                     max_size = 10 * 1024 * 1024  # 10MB
                     if file_size > max_size:
+                        print(f"❌ [Gemini API 오류] 이미지 파일이 너무 큽니다 ({file_size/1024/1024:.2f}MB > 10MB)")
                         return None  # 파일이 너무 큼
-                except Exception:
+                except Exception as e:
+                    print(f"❌ [Gemini API 오류] 파일 크기 확인 중 오류: {str(e)}")
                     return None
-                    
+                
                 # 이미지 로드
                 try:
                     with open(abs_path, "rb") as image_file:
                         image_data = image_file.read()
-                except PermissionError:
+                except PermissionError as e:
+                    print(f"❌ [Gemini API 오류] 파일 접근 권한이 없습니다: {str(e)}")
                     return None
-                except Exception:
+                except Exception as e:
+                    print(f"❌ [Gemini API 오류] 이미지 로드 중 오류: {str(e)}")
                     return None
                 
                 # MIME 타입 결정
@@ -451,44 +478,54 @@ class GeminiAnalyzer(ImageAnalyzer):
                     }
                 ]
                 
+                # 지수 백오프 적용 (재시도마다 대기 시간 증가)
+                if retry_count > 0:
+                    # 2^n 공식 적용 (2, 4, 8, 16, 32초...)
+                    current_delay = base_delay * (2 ** (retry_count - 1))
+                    # 약간의 랜덤성 추가 (지터)
+                    jitter = random.uniform(0.8, 1.2)
+                    delay_with_jitter = current_delay * jitter
+                    
+                    print(f"  ⚠️ [Gemini API 재시도] {retry_count}/{max_retries} (대기: {delay_with_jitter:.2f}초)")
+                    time.sleep(delay_with_jitter)
+                
                 # Gemini에 프롬프트와 함께 전송
                 prompt = f"다음 지시에 따라 이미지를 분석해주세요: {self.prompt}\n이미지를 분석하고 요청된 정보만 추출해주세요."
                 
                 try:
+                    print(f"  ✓ Gemini API 요청 중...")
                     response = self.model.generate_content(
                         contents=[prompt, image_parts[0]]
                     )
                     
                     if response and hasattr(response, 'text'):
                         extracted_info = response.text.strip()
+                        print(f"  ✓ [Gemini API 요청 성공] 결과를 받았습니다.")
                         return extracted_info
                     else:
                         # API 응답 오류 재시도
                         retry_count += 1
-                        if retry_count < max_retries:
-                            time.sleep(1)  # 1초 대기 후 재시도
-                            continue
-                        return None
-                except requests.exceptions.RequestException:
+                        print(f"❌ [Gemini API 오류] 유효하지 않은 응답 형식")
+                        continue
+                except requests.exceptions.RequestException as e:
                     # 네트워크 오류 재시도
                     retry_count += 1
-                    if retry_count < max_retries:
-                        time.sleep(2)  # 2초 대기 후 재시도
-                        continue
-                    return None
+                    print(f"❌ [Gemini API 오류] 네트워크 요청 실패: {str(e)}")
+                    continue
                 except Exception as e:
                     # 모델 호출 오류 확인 및 재시도
                     retry_count += 1
-                    if retry_count < max_retries:
-                        time.sleep(1)  # 1초 대기 후 재시도
-                        continue
-                    return None
-                
-            except Exception:
-                retry_count += 1
-                if retry_count < max_retries:
-                    time.sleep(1)  # 1초 대기 후 재시도
+                    print(f"❌ [Gemini API 오류] API 호출 중 오류: {str(e)}")
+                    
+                    # 429 에러 감지 (Too Many Requests)
+                    if "429" in str(e) or "rate limit" in str(e).lower() or "too many requests" in str(e).lower():
+                        print(f"⚠️ [Gemini API 오류] 요청 한도 초과 (Rate Limit) - 지수 백오프 적용 중...")
                     continue
-                return None
+                
+            except Exception as e:
+                retry_count += 1
+                print(f"❌ [Gemini API 오류] 예상치 못한 오류 발생: {str(e)}")
+                continue
         
-        return None 
+        print(f"❌ [Gemini API 오류] 최대 재시도 횟수({max_retries}회)를 초과했습니다. 분석에 실패했습니다.")
+        return None
