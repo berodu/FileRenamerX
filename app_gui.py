@@ -2053,6 +2053,20 @@ class TaskieXApp:
                 print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
                 
                 self.process_excel(work_dir, excel_path)
+            elif current_mode == "update_pipe":
+                # 이상위치 업데이트 모드 작업 실행
+                excel_path = self.excel_path.get()
+                print(f"• 모드: 이상위치 업데이트")
+                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
+                
+                self.process_excel(work_dir, excel_path)
+            elif current_mode == "update_status":
+                # 작업 현황 업데이트 모드 작업 실행
+                excel_path = self.excel_path.get()
+                print(f"• 모드: 작업 현황 업데이트")
+                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
+                
+                self.update_status_excel(work_dir, excel_path)
             
         except Exception as e:
             print(f"\n❌ 예상치 못한 오류 발생: {str(e)}")
