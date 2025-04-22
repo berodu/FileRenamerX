@@ -16,6 +16,7 @@ import subprocess
 import psutil
 import logging
 import random
+from openpyxl.utils import get_column_letter
 
 # 기존 분석기 및 비디오 프로세서 임포트
 from video_processor import VideoProcessor
@@ -175,26 +176,47 @@ class RedirectText:
         # 성공 관련 키워드 강조
         success_keywords = ["성공", "[성공]", "완료", "처리 완료"]
         for keyword in success_keywords:
-            start_pos = self.text_widget.search(keyword, current_line, tk.END)
-            if start_pos:
+            start_idx = 0
+            while True:
+                start_pos = self.text_widget.search(keyword, current_line + f"+{start_idx}c", tk.END)
+                if not start_pos:
+                    break
                 end_pos = f"{start_pos}+{len(keyword)}c"
                 self.text_widget.tag_add("success_keyword", start_pos, end_pos)
+                # 다음 검색을 위해 인덱스 업데이트
+                start_idx_parts = start_pos.split('.')
+                if len(start_idx_parts) > 1:
+                    start_idx = int(start_idx_parts[1]) + len(keyword)
         
         # 오류 관련 키워드 강조
         error_keywords = ["실패", "[실패]", "오류", "에러", "Error", "error"]
         for keyword in error_keywords:
-            start_pos = self.text_widget.search(keyword, current_line, tk.END)
-            if start_pos:
+            start_idx = 0
+            while True:
+                start_pos = self.text_widget.search(keyword, current_line + f"+{start_idx}c", tk.END)
+                if not start_pos:
+                    break
                 end_pos = f"{start_pos}+{len(keyword)}c"
                 self.text_widget.tag_add("error_keyword", start_pos, end_pos)
+                # 다음 검색을 위해 인덱스 업데이트
+                start_idx_parts = start_pos.split('.')
+                if len(start_idx_parts) > 1:
+                    start_idx = int(start_idx_parts[1]) + len(keyword)
         
         # 경고 관련 키워드 강조
         warning_keywords = ["건너뜀", "[건너뜀]", "경고", "주의"]
         for keyword in warning_keywords:
-            start_pos = self.text_widget.search(keyword, current_line, tk.END)
-            if start_pos:
+            start_idx = 0
+            while True:
+                start_pos = self.text_widget.search(keyword, current_line + f"+{start_idx}c", tk.END)
+                if not start_pos:
+                    break
                 end_pos = f"{start_pos}+{len(keyword)}c"
                 self.text_widget.tag_add("warning_keyword", start_pos, end_pos)
+                # 다음 검색을 위해 인덱스 업데이트
+                start_idx_parts = start_pos.split('.')
+                if len(start_idx_parts) > 1:
+                    start_idx = int(start_idx_parts[1]) + len(keyword)
     
     def flush(self):
         """파이썬 출력 스트림 호환을 위한 메서드"""
@@ -711,9 +733,8 @@ class TaskieXApp:
             # UI 업데이트
             self.update_ui_for_processing(True)
             
-            # 출력 폴더 생성
-            output_dir = os.path.join(work_dir, "output")
-            os.makedirs(output_dir, exist_ok=True)
+            # 출력 폴더 생성 - 삭제
+            output_dir = None  # 기본값으로 None 설정
             
             # 프레임 시간 설정
             frame_times = [2, 3, 5]  # 기본 프레임 시간
@@ -1534,6 +1555,15 @@ class TaskieXApp:
                         video_pipe_type = m.group(3)  # 배관종류 (예: "입상관")
                         pipe_name = m.group(4)  # 배관명 (예: "온수")
                         
+                        # 괄호 내용 저장 (있는 경우)
+                        parenthesis_content = None
+                        if '(' in pipe_name and ')' in pipe_name:
+                            # 괄호 안의 내용 추출
+                            match = re.search(r'\((.*?)\)', pipe_name)
+                            if match:
+                                parenthesis_content = match.group(1).strip()
+                                print(f"  • 괄호 내용 추출: '{parenthesis_content}'")
+                        
                         # 배관명에서 괄호 이후 부분 제거
                         if '(' in pipe_name:
                             pipe_name = pipe_name.split('(')[0].strip()
@@ -1705,10 +1735,37 @@ class TaskieXApp:
                                 for col_idx, pipe_name in column_to_pipe.items():
                                     if pipe_name in inspected_pipes:
                                         cell = ws_target.cell(row=row_idx, column=col_idx)
-                                        cell.value = "완료"
-                                        cell.fill = blue_fill
+                                        
+                                        # 괄호 내용이 있는지 확인하여 다르게 표시
+                                        # 파일명에서 괄호 내용 확인을 위한 변수
+                                        has_parenthesis = False
+                                        content_to_display = "완료"
+                                        
+                                        # 해당 동-라인-배관과 일치하는 파일들 확인
+                                        for f_name, f_info in processed_riser_files.items():
+                                            if (f_info["building"] == building and 
+                                                f_info["line"] == line and 
+                                                (f_info["pipe"] == pipe_name or pipe_name in f_info["pipe"])):
+                                                # 현재 처리 중인 파일에서 괄호 정보 가져오기
+                                                match = re.search(r'\((.*?)\)', f_name)
+                                                if match:
+                                                    has_parenthesis = True
+                                                    content_to_display = match.group(1).strip()
+                                                    break
+                                        
+                                        # 괄호 내용 또는 '완료' 표시
+                                        cell.value = content_to_display
+                                        
+                                        # 괄호 유무에 따라 다른 배경색 적용
+                                        if has_parenthesis:
+                                            cell.fill = yellow_fill  # 노란색 배경
+                                            print(f"  • [입상관] 동: {building}, 라인: {line}, 배관: {pipe_name} -> '{content_to_display}' 표시 (노란색, 행 {row_idx})")
+                                        else:
+                                            cell.fill = blue_fill    # 하늘색 배경
+                                            print(f"  • [입상관] 동: {building}, 라인: {line}, 배관: {pipe_name} -> '완료' 표시 (하늘색, 행 {row_idx})")
+                                        
                                         cell.font = black_font
-                                        print(f"  • [입상관] 동: {building}, 라인: {line}, 배관: {pipe_name} -> 완료 표시 (행 {row_idx})")
+                                        
                                         updated_count += 1
                                         total_updated_cells += 1
                                         updated_pipe_types.add(pipe_type)
@@ -1773,6 +1830,61 @@ class TaskieXApp:
                     
                     print(f"  • {pipe_type} 처리 시작 (비입상관 처리)")
                     
+                    # 동 정보 동적 추출
+                    building_info = {}  # 동적으로 채울 동 정보
+                    print(f"  • 작업현황 시트에서 동 범위 찾는 중...")
+                    
+                    # 8행에서 동 정보 추출
+                    for col in range(1, ws_target.max_column + 1):
+                        cell_value = ws_target.cell(row=8, column=col).value
+                        if cell_value is not None and '동' in str(cell_value):
+                            dong_str = str(cell_value).strip()
+                            dong_match = re.search(r'(\d+)', dong_str)
+                            if dong_match:
+                                dong_num = int(dong_match.group(1))
+                                
+                                # 병합 셀 범위 확인
+                                merged_cell_found = False
+                                dong_start_col = col
+                                dong_end_col = col
+                                
+                                for merged_range in ws_target.merged_cells.ranges:
+                                    if merged_range.min_row <= 8 <= merged_range.max_row and merged_range.min_col <= col <= merged_range.max_col:
+                                        dong_start_col = merged_range.min_col
+                                        dong_end_col = merged_range.max_col
+                                        merged_cell_found = True
+                                        break
+                                
+                                # 라인 수 계산 (병합 셀 크기)
+                                lines = dong_end_col - dong_start_col + 1
+                                
+                                # 동 정보 저장
+                                building_info[dong_num] = {
+                                    "start_col": get_column_letter(dong_start_col),
+                                    "lines": lines
+                                }
+                                
+                                print(f"    ✓ {dong_num}동 정보 추출: 시작열={get_column_letter(dong_start_col)}, 끝열={get_column_letter(dong_end_col)}, 라인수={lines}")
+                                
+                                # 열 위치 업데이트 (병합 셀 다음부터 검색)
+                                if merged_cell_found:
+                                    col = dong_end_col
+                    
+                    # 동 정보가 추출되지 않은 경우 기본값 사용
+                    if not building_info:
+                        print(f"  ⚠️ 시트에서 동 정보를 찾을 수 없어 기본값 사용")
+                        building_info = {
+                            101: {"start_col": "A", "lines": 4}, 102: {"start_col": "H", "lines": 4},
+                            103: {"start_col": "O", "lines": 5}, 104: {"start_col": "W", "lines": 6},
+                            105: {"start_col": "AF", "lines": 4}, 106: {"start_col": "AM", "lines": 4},
+                            107: {"start_col": "AT", "lines": 4}, 108: {"start_col": "BA", "lines": 4},
+                            109: {"start_col": "BH", "lines": 4}, 110: {"start_col": "BO", "lines": 4},
+                        }
+                    
+                    print(f"  • 동 정보 요약:")
+                    for building, info in building_info.items():
+                        print(f"    동={building}, 시작열={info['start_col']}, 라인수={info['lines']}")
+                    
                     for fname in video_file_names:
                         # 파일명에서 정보 추출 (예: "102동 1903호 세대매립관 세탁.mp4")
                         m = re.match(r"(\d+)동\s*(\d+)호\s*(.+?)\s*(\S+)\.mp4", fname)
@@ -1791,6 +1903,15 @@ class TaskieXApp:
                         unit_str = m.group(2)  # 예: "1903"
                         video_pipe_type = m.group(3)  # 배관종류 (예: "세대매립관")
                         pipe_name = m.group(4)  # 배관명 (예: "세탁")
+                        
+                        # 괄호 내용 저장 (있는 경우)
+                        parenthesis_content = None
+                        if '(' in pipe_name and ')' in pipe_name:
+                            # 괄호 안의 내용 추출
+                            match = re.search(r'\((.*?)\)', pipe_name)
+                            if match:
+                                parenthesis_content = match.group(1).strip()
+                                print(f"  • 괄호 내용 추출: '{parenthesis_content}'")
                         
                         # 배관명에서 괄호 이후 부분 제거
                         if '(' in pipe_name:
@@ -1838,18 +1959,7 @@ class TaskieXApp:
                                 pipe_type_results[pipe_type] = {"files": [], "failed": []}
                             pipe_type_results[pipe_type]["failed"].append({"file": fname, "reason": f"범례에 없는 배관명: {pipe_name}"})
                     
-                    # 세대 위치에 배관번호 기록
-                    building_info = {
-                        101: {"start_col": "A", "lines": 4}, 102: {"start_col": "H", "lines": 4},
-                        103: {"start_col": "O", "lines": 5}, 104: {"start_col": "W", "lines": 6},
-                        105: {"start_col": "AF", "lines": 4}, 106: {"start_col": "AM", "lines": 4},
-                        107: {"start_col": "AT", "lines": 4}, 108: {"start_col": "BA", "lines": 4},
-                        109: {"start_col": "BH", "lines": 4}, 110: {"start_col": "BO", "lines": 4},
-                    }
-                    
-                    print(f"  • 시트 구조 정보:")
-                    for building, info in building_info.items():
-                        print(f"    동={building}, 시작열={info['start_col']}, 라인수={info['lines']}")
+                    # 세대 위치에 배관번호 기록 - 하드코딩된 building_info 제거
                     
                     # 처리 결과 추적
                     processed_units = 0
@@ -1863,16 +1973,72 @@ class TaskieXApp:
                             
                         # 층과 라인 계산
                         try:
-                            if len(unit_str) >= 3:
-                                floor = int(unit_str[:-2])  # 마지막 두 자리를 제외한 부분 (층)
-                                line = int(unit_str[-2:])   # 마지막 두 자리 (라인)
-                            else:
-                                floor = int(unit_str[0])
-                                line = int(unit_str[1:])  # (3자리 호수 처리)
+                            if len(unit_str) >= 4:  # 4자리 호수(예: 1105)
+                                floor = int(unit_str[:2])  # 앞 두 자리를 층수로
+                                line = int(unit_str[2:])   # 뒤 두 자리를 호수로
+                            elif len(unit_str) == 3:  # 3자리 호수
+                                # 첫 자리가 1이고 다음 자리가 0이 아니면 두 자리를 층수로
+                                if unit_str[0] == '1' and unit_str[1] != '0':
+                                    floor = int(unit_str[:2])
+                                    line = int(unit_str[2:])
+                                else:
+                                    floor = int(unit_str[0])
+                                    line = int(unit_str[1:])
+                            else:  # 2자리 이하 (25호, 5호 등)
+                                floor = int(unit_str[0]) if len(unit_str) >= 2 else 1
+                                line = int(unit_str[1:]) if len(unit_str) >= 2 else int(unit_str)
                             
-                            row = 41 - floor
+                            # 시트에서 1층 위치 찾기
+                            first_floor_row = None
+                            for row_idx in range(6, ws_target.max_row + 1):
+                                cell_value = ws_target.cell(row=row_idx, column=1).value  # A열
+                                if cell_value is not None:
+                                    cell_str = str(cell_value).strip()
+                                    if cell_str == "1층":
+                                        first_floor_row = row_idx
+                                        print(f"  ✓ 시트에서 1층 위치 찾음: {first_floor_row}행 (A열)")
+                                        break
+                            
+                            # 1층을 찾지 못했다면 B열에서도 확인
+                            if not first_floor_row:
+                                for row_idx in range(6, ws_target.max_row + 1):
+                                    cell_value = ws_target.cell(row=row_idx, column=2).value  # B열
+                                    if cell_value is not None:
+                                        cell_str = str(cell_value).strip()
+                                        if cell_str == "1층":
+                                            first_floor_row = row_idx
+                                            print(f"  ✓ 시트에서 1층 위치 찾음: {first_floor_row}행 (B열)")
+                                            break
+                            
+                            # 1층을 찾지 못한 경우 하드코딩된 값 사용
+                            if not first_floor_row:
+                                print(f"  ⚠️ 시트에서 1층을 찾을 수 없어 기본값 사용")
+                                row = 41 - floor
+                            else:
+                                # 1층을 기준으로 층수에 따른 행 계산
+                                row = first_floor_row - (floor - 1)  # 1층보다 위층은 행번호가 작아짐
+                            
+                            # 동이 정의되어 있지 않으면 오류 메시지 출력
+                            if building not in building_info:
+                                print(f"  ⚠️ {building}동 정보가 없어 처리할 수 없습니다.")
+                                continue
+
+                            # 시작 열 인덱스 계산
                             start_col_index = column_index_from_string(building_info[building]["start_col"])
-                            target_col_index = start_col_index + line  # (층 라벨열 + line)
+                            
+                            # 라인 번호가 동의 라인 수를 초과하는지 확인
+                            max_line = building_info[building]["lines"]
+                            line_adjusted = False
+                            if line > max_line:
+                                print(f"  ⚠️ 라인 번호({line})가 {building}동의 최대 라인 수({max_line})를 초과합니다.")
+                                # 최대 라인으로 제한
+                                line = max_line
+                                line_adjusted = True
+                                print(f"  ⚠️ 라인 번호를 {line}으로 조정합니다.")
+                            
+                            # 열 인덱스 계산 (해당 동의 시작열 + 라인 - 1)
+                            # 라인은 1부터 시작하므로 1을 빼서 0부터 시작하는 인덱스로 변환
+                            target_col_index = start_col_index + line - 1
                             
                             # 디버깅 정보
                             print(f"  • 계산 정보: 동={building}, 호={unit_str} -> 층={floor}, 라인={line}")
@@ -1925,18 +2091,34 @@ class TaskieXApp:
                                 # 해당 동-호에 해당하는 파일들을 모두 성공으로 표시
                                 for f_name, f_info in processed_unit_files.items():
                                     if f_info["building"] == building and f_info["unit"] == unit_str:
-                                        # 파일 처리 성공 기록
-                                        file_results[f_name] = {
-                                            "status": "성공",
-                                            "pipe_type": pipe_type
-                                        }
+                                        # 라인 번호가 조정된 경우 실패로 처리
+                                        if line_adjusted:
+                                            # 파일 처리 실패 기록
+                                            file_results[f_name] = {
+                                                "status": "실패",
+                                                "pipe_type": pipe_type,
+                                                "reason": f"라인 번호({line + 1})가 {building}동의 최대 라인 수({max_line})를 초과하여 조정됨"
+                                            }
+                                        else:
+                                            # 파일 처리 성공 기록
+                                            file_results[f_name] = {
+                                                "status": "성공",
+                                                "pipe_type": pipe_type
+                                            }
                                         processed_files.add(f_name)
                                         f_info["processed"] = True  # 처리 완료 표시
                                         
-                                        # 배관종류별 성공 결과 추가
+                                        # 배관종류별 결과 추가
                                         if pipe_type not in pipe_type_results:
                                             pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                                        if f_name not in pipe_type_results[pipe_type]["files"]:
+                                        
+                                        if line_adjusted:
+                                            # 실패 결과에 추가
+                                            pipe_type_results[pipe_type]["failed"].append({
+                                                "file": f_name, 
+                                                "reason": f"라인 번호({line + 1})가 {building}동의 최대 라인 수({max_line})를 초과하여 조정됨"
+                                            })
+                                        elif f_name not in pipe_type_results[pipe_type]["files"]:
                                             pipe_type_results[pipe_type]["files"].append(f_name)
                             else:
                                 cell.value = None  # 점검된 배관 없으면 비워둠
@@ -1978,17 +2160,17 @@ class TaskieXApp:
                         reason = file_results[fname].get("reason", "")
                         
                         if status == "성공":
-                            print(f"• {fname}: (성공)")
+                            print(f"• {fname}: 성공")
                         elif status == "실패":
-                            print(f"• {fname}: (실패) - {reason}")
+                            print(f"• {fname}: 실패 - {reason}")
                         elif status == "건너뜀":
                             if "배관명 불일치" in reason:
-                                print(f"• {fname}: (오류) - {reason}")
+                                print(f"• {fname}: 오류 - {reason}")
                             else:
-                                print(f"• {fname}: (건너뜀) - {reason}")
+                                print(f"• {fname}: 건너뜀 - {reason}")
                     else:
                         # 결과가 없는 파일은 처리되지 않음으로 표시
-                        print(f"• {fname}: (오류) - 처리되지 않음")
+                        print(f"• {fname}: 오류 - 처리되지 않음")
                         # 파일 정보 추가
                         file_results[fname] = {
                             "status": "건너뜀", 
