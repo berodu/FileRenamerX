@@ -90,7 +90,15 @@ class RedirectText:
         
         # 처음 호출되는 경우에만 타이머 시작
         if self.update_timer is None:
-            self.update_timer = self.text_widget.after(100, self.update_text)
+            # 로그 업데이트 간격을 100ms에서 20ms로 줄여 더 빠른 응답성 제공
+            self.update_timer = self.text_widget.after(20, self.update_text)
+        
+        # 중요 로그 패턴 감지 시 즉시 업데이트 시도
+        if string.startswith("✓") or string.startswith("❌") or string.startswith("⚠️") or "[" in string:
+            # 이미 타이머가 설정된 경우 취소하고 즉시 업데이트
+            if self.update_timer:
+                self.text_widget.after_cancel(self.update_timer)
+                self.update_timer = self.text_widget.after(1, self.update_text)
     
     def _should_filter_message(self, message):
         """필터링할 메시지인지 확인"""
@@ -131,8 +139,13 @@ class RedirectText:
     def update_text(self):
         """큐에 있는 메시지를 텍스트 위젯에 업데이트"""
         self.update_timer = None
+        
         try:
-            while True:
+            # 한 번의 업데이트에서 최대 처리할 메시지 수 제한
+            messages_processed = 0
+            max_batch_size = 10  # 한 번에 최대 10개 메시지 처리
+            
+            while not self.queue.empty() and messages_processed < max_batch_size:
                 string = self.queue.get_nowait()
                 self.text_widget.configure(state='normal')
                 
@@ -154,6 +167,7 @@ class RedirectText:
                     self._highlight_keywords(string)
                 
                 self.message_count += 1
+                messages_processed += 1
                 
                 # 최대 메시지 수를 초과하면 오래된 메시지 제거 (메모리 관리)
                 if self.message_count > self.max_messages:
@@ -164,8 +178,24 @@ class RedirectText:
                 self.text_widget.see(tk.END)
                 self.text_widget.configure(state='disabled')
                 self.queue.task_done()
+                
+            # 메시지 처리 후 강제 업데이트
+            self.text_widget.update_idletasks()
+            
+            # 큐에 메시지가 더 있거나 배치 처리가 완료된 경우 다시 타이머 설정
+            if not self.queue.empty() or messages_processed >= max_batch_size:
+                # 즉시 다음 배치 처리 예약
+                self.update_timer = self.text_widget.after(10, self.update_text)
+            else:
+                # 큐가 비어있으면 약간 더 길게 대기 후 다시 확인
+                self.update_timer = self.text_widget.after(50, self.update_text)
+                
         except queue.Empty:
             # 큐가 비어있으면 일정 시간 후 다시 확인
+            self.update_timer = self.text_widget.after(50, self.update_text)
+        except Exception as e:
+            # 예외 발생 시 복구 시도
+            print(f"로그 업데이트 중 오류: {str(e)}")
             self.update_timer = self.text_widget.after(100, self.update_text)
     
     def _highlight_keywords(self, message):
@@ -220,7 +250,10 @@ class RedirectText:
     
     def flush(self):
         """파이썬 출력 스트림 호환을 위한 메서드"""
-        pass
+        # 큐에 있는 모든 메시지 즉시 처리 시도
+        if self.update_timer:
+            self.text_widget.after_cancel(self.update_timer)
+            self.update_timer = self.text_widget.after(1, self.update_text)
         
     def clear(self):
         """텍스트 위젯의 내용을 지움"""
@@ -757,18 +790,6 @@ class TaskieXApp:
                     if not all_files:
                         messagebox.showerror("오류", "작업 폴더에 처리할 비디오/이미지 파일이 없습니다.")
                         return
-                    
-                    # 처리량 조절: 파일 수가 많을 경우 제한
-                    file_limit = 10  # 한 번에 처리할 최대 파일 수
-                    if len(all_files) > file_limit:
-                        result = messagebox.askquestion(
-                            "처리량 조절",
-                            f"총 {len(all_files)}개 파일이 발견되었습니다. 처리량 조절을 위해 {file_limit}개로 제한하시겠습니까?",
-                            icon='warning'
-                        )
-                        if result == 'yes':
-                            all_files = all_files[:file_limit]
-                            print(f"⚠️ 처리량 조절: 총 {len(all_files)}개 파일 중 {file_limit}개만 처리합니다.")
                 
                 # API 키 유효성 확인
                 missing_keys = check_api_keys()
@@ -1009,14 +1030,17 @@ class TaskieXApp:
                           last_video_name, last_video_base_name, image_counter):
         """비디오 파일 처리"""
         print(f"\n[{idx}/{total}] [비디오] {original_filename}")
+        sys.stdout.flush()  # 명시적 flush 추가
         
         try:
             # 비디오에서 프레임 추출
             print(f"  - 프레임 추출 중... ({', '.join(map(str, frame_times))}초)")
+            sys.stdout.flush()  # 명시적 flush 추가
             frame_paths = video_processor.extract_frames(file_rel_path, frame_times)
             
             if not frame_paths:
                 print(f"❌ 프레임 추출 실패 - 비디오 파일이 손상되었거나 접근할 수 없습니다.")
+                sys.stdout.flush()  # 명시적 flush 추가
                 return None
             
             # 각 프레임 분석
@@ -1027,6 +1051,7 @@ class TaskieXApp:
                 # 가장 많이 나온 결과 사용
                 most_common = max(set(video_results), key=video_results.count)
                 print(f"  ✓ 최종 결과: {most_common}")
+                sys.stdout.flush()  # 명시적 flush 추가
                 
                 # 동영상 파일 이름 변경
                 try:
@@ -1052,6 +1077,7 @@ class TaskieXApp:
                     os.rename(file_full_path, new_path)
                     new_filename = os.path.basename(new_path)
                     print(f"  ✓ 파일명 변경: {original_filename} > {new_filename}")
+                    sys.stdout.flush()  # 명시적 flush 추가
                     
                     # 마지막 비디오 이름 저장 (확장자 제외)
                     last_video_name = new_name
@@ -1070,17 +1096,22 @@ class TaskieXApp:
                     }
                 except PermissionError as e:
                     print(f"❌ 파일 이름 변경 권한이 없습니다: {str(e)}")
+                    sys.stdout.flush()  # 명시적 flush 추가
                 except FileNotFoundError as e:
                     print(f"❌ 원본 파일을 찾을 수 없습니다: {str(e)}")
+                    sys.stdout.flush()  # 명시적 flush 추가
                 except Exception as e:
                     print(f"❌ 파일 이름 변경 실패: {str(e)}")
+                    sys.stdout.flush()  # 명시적 flush 추가
             else:
                 print(f"❌ 유효한 결과 없음 - 모든 프레임 분석에 실패했습니다. 다음 파일로 진행합니다.")
+                sys.stdout.flush()  # 명시적 flush 추가
         
         except Exception as e:
             print(f"❌ 비디오 처리 중 오류: {str(e)}")
             import traceback
             print(f"❌ 오류 상세정보: {traceback.format_exc()}")
+            sys.stdout.flush()  # 명시적 flush 추가
         
         return None
     
@@ -1090,10 +1121,12 @@ class TaskieXApp:
         
         # 각 프레임 분석
         print(f"  - 프레임 분석 중... ({len(frame_paths)}개)")
+        sys.stdout.flush()  # 명시적 flush 추가
         
         # 처리량 조절 - 프레임 제한 (최대 3개 프레임만 처리)
         if len(frame_paths) > 3:
             print(f"  ⚠️ 처리량 조절: {len(frame_paths)}개 프레임 중 3개만 분석합니다.")
+            sys.stdout.flush()  # 명시적 flush 추가
             frame_paths = frame_paths[:3]
         
         for i, frame_path in enumerate(frame_paths, 1):
@@ -1103,6 +1136,7 @@ class TaskieXApp:
             # 파일 존재 확인
             if not os.path.exists(frame_path):
                 print(f"  ❌ 프레임 파일이 존재하지 않습니다: {frame_path}")
+                sys.stdout.flush()  # 명시적 flush 추가
                 continue
             
             # 분석 시도 (최대 5회, 이전 3회에서 증가)
@@ -1112,6 +1146,7 @@ class TaskieXApp:
             base_delay = 2  # 기본 대기 시간 (초)
             
             print(f"    프레임 {i}/{len(frame_paths)} 분석 중...")
+            sys.stdout.flush()  # 명시적 flush 추가
             
             while retry_count < max_retries and extracted_info is None:
                 try:
@@ -1124,6 +1159,7 @@ class TaskieXApp:
                         delay_with_jitter = current_delay * jitter
                         
                         print(f"    ⚠️ API 요청 재시도 {retry_count}/{max_retries} (대기: {delay_with_jitter:.2f}초)")
+                        sys.stdout.flush()  # 명시적 flush 추가
                         time.sleep(delay_with_jitter)
                     
                     # API 호출
@@ -1132,8 +1168,10 @@ class TaskieXApp:
                     # 분석 결과 출력
                     if extracted_info:
                         print(f"    ✓ 분석 성공: {extracted_info}")
+                        sys.stdout.flush()  # 명시적 flush 추가
                     else:
                         print(f"    ❌ 분석 결과가 없습니다.")
+                        sys.stdout.flush()  # 명시적 flush 추가
                         retry_count += 1
                 except Exception as e:
                     retry_count += 1
@@ -1148,17 +1186,20 @@ class TaskieXApp:
                         print(f"    ❌ 인증 오류: {error_message}")
                     else:
                         print(f"    ❌ 분석 오류: {error_message}")
+                    sys.stdout.flush()  # 명시적 flush 추가
             
             # 최종 결과 처리
             if extracted_info:
                 video_results.append(extracted_info)
             else:
                 print(f"    ❌ 프레임 {i} 분석에 모든 시도가 실패했습니다.")
+                sys.stdout.flush()  # 명시적 flush 추가
             
             # 처리량 조절 - 프레임 간 대기 시간 추가
             if i < len(frame_paths) and extracted_info:
                 delay_between_frames = 1  # 프레임 간 2초 대기
                 print(f"    ✓ 다음 프레임 분석 전 {delay_between_frames}초 대기 중...")
+                sys.stdout.flush()  # 명시적 flush 추가
                 time.sleep(delay_between_frames)
         
         # 결과 요약
@@ -1166,6 +1207,7 @@ class TaskieXApp:
             print(f"  ✓ 프레임 분석 완료: {len(video_results)}/{len(frame_paths)} 성공")
         else:
             print(f"  ❌ 모든 프레임 분석에 실패했습니다.")
+        sys.stdout.flush()  # 명시적 flush 추가
         
         return video_results
         
@@ -1220,6 +1262,16 @@ class TaskieXApp:
         
         # 임시 폴더 삭제
         self.cleanup_temp_dir()
+        
+        # 작업폴더/output 폴더가 있다면 삭제
+        try:
+            work_dir = self.folder_path.get()
+            output_dir = os.path.join(work_dir, "output")
+            if os.path.exists(output_dir) and os.path.isdir(output_dir):
+                shutil.rmtree(output_dir)
+                print(f"✓ 작업폴더 내 output 폴더 삭제 완료")
+        except Exception as e:
+            print(f"⚠️ output 폴더 삭제 중 오류: {str(e)}")
         
         # 메모리 정리 및 COM 객체 정리
         try:
@@ -1555,6 +1607,14 @@ class TaskieXApp:
                         video_pipe_type = m.group(3)  # 배관종류 (예: "입상관")
                         pipe_name = m.group(4)  # 배관명 (예: "온수")
                         
+                        # 원본 파이프 이름 저장 (로깅용)
+                        original_pipe_name = pipe_name
+                        
+                        # 먼저 '명판오류' 괄호를 제거
+                        if '(명판오류)' in pipe_name:
+                            pipe_name = pipe_name.replace('(명판오류)', '').strip()
+                            print(f"  • '명판오류' 괄호 제거: '{original_pipe_name}' → '{pipe_name}'")
+                        
                         # 괄호 내용 저장 (있는 경우)
                         parenthesis_content = None
                         if '(' in pipe_name and ')' in pipe_name:
@@ -1747,10 +1807,18 @@ class TaskieXApp:
                                                 f_info["line"] == line and 
                                                 (f_info["pipe"] == pipe_name or pipe_name in f_info["pipe"])):
                                                 # 현재 처리 중인 파일에서 괄호 정보 가져오기
-                                                match = re.search(r'\((.*?)\)', f_name)
+                                                # '명판오류' 괄호를 제외한 다른 괄호만 찾기
+                                                original_filename = f_name  # 원본 파일명 저장
+                                                
+                                                # 먼저 '명판오류' 괄호 제거
+                                                clean_filename = f_name.replace('(명판오류)', '')
+                                                
+                                                # 남은 괄호 찾기
+                                                match = re.search(r'\((.*?)\)', clean_filename)
                                                 if match:
                                                     has_parenthesis = True
                                                     content_to_display = match.group(1).strip()
+                                                    print(f"  • 특이사항 추출: '{original_filename}' → '{content_to_display}'")
                                                     break
                                         
                                         # 괄호 내용 또는 '완료' 표시
