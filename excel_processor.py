@@ -506,32 +506,227 @@ class ExcelProcessor:
             if use_special_position:
                 # 옥상인 경우 가장 높은 층을 찾아 그 위 행을 사용
                 if is_rooftop:
-                    # A열에서 "층"이 포함된 모든 행을 찾아 가장 높은 층 찾기
+                    # 입력창 시트에서 동, 라인별 최고층 찾기
+                    # 초기값 설정
                     highest_floor = 1
                     highest_floor_row = first_floor_row
                     
-                    # A열과 B열에서 층 정보 검색
-                    for row in range(6, first_floor_row + 20):  # 1층 기준으로 위쪽 20행까지만 검색
-                        for col in [1, 2]:  # A열, B열 검사
-                            cell_value = sheet.cell(row=row, column=col).value
-                            if cell_value is not None and "층" in str(cell_value):
-                                # 숫자 추출
-                                floor_match = re.search(r'(\d+)층', str(cell_value))
-                                if floor_match:
-                                    floor_num = int(floor_match.group(1))
-                                    if floor_num > highest_floor:
-                                        highest_floor = floor_num
-                                        highest_floor_row = row
+                    # 이미 라인 번호가 추출된 경우
+                    line_number = None
+                    
+                    # 이상배관LIST 시트에서 D열 값 추출 (라인 번호 확인)
+                    if list_sheet_info and wb:
+                        # D열에서 라인 정보 추출
+                        if "d_value" in list_sheet_info and list_sheet_info["d_value"] is not None:
+                            d_val = list_sheet_info["d_value"]
+                            d_val_str = str(d_val)
+                            d_val_clean = d_val_str.replace("호", "").strip()
+                            d_number = ''.join(filter(str.isdigit, d_val_clean))
+                            
+                            if d_number:
+                                try:
+                                    line_number = int(d_number)
+                                    log_message(f"옥상 처리: D열에서 라인 정보 추출 (라인 {line_number})")
+                                except ValueError:
+                                    log_message(f"⚠️ 옥상 처리: D열 숫자 변환 실패: '{d_number}'")
+                    
+                    # 입력창 시트가 있는지 확인
+                    if wb and '입력창' in wb.sheetnames:
+                        input_sheet = wb['입력창']
+                        dong_number = ''.join(filter(str.isdigit, dong))
+                        log_message(f"옥상 처리: 입력창 시트에서 {dong}(숫자:{dong_number})과 라인 {line_number} 검색")
+                        
+                        # 입력창 시트 구조 로깅 (첫 5행만)
+                        log_message(f"▶ 입력창 시트 구조 확인 (처음 5행):")
+                        for r in range(1, min(6, input_sheet.max_row + 1)):
+                            row_data = []
+                            for c in range(1, min(8, input_sheet.max_column + 1)):
+                                cell_value = input_sheet.cell(row=r, column=c).value
+                                row_data.append(f"{get_column_letter(c)}:{cell_value}")
+                            log_message(f"  행 {r}: {', '.join(row_data)}")
+                        
+                        # 동과 라인 정보로 최고층 검색
+                        found_highest_floor = False
+                        
+                        for row in range(9, input_sheet.max_row + 1):  # 데이터는 9행부터 시작하는 것으로 보임
+                            b_cell = input_sheet.cell(row=row, column=2).value  # B열: 동
+                            c_cell = input_sheet.cell(row=row, column=3).value  # C열: 호(라인)
+                            f_cell = input_sheet.cell(row=row, column=6).value  # F열: 최고층
+                            
+                            # 셀 값이 None이면 건너뛰기
+                            if b_cell is None or c_cell is None or f_cell is None:
+                                continue
+                            
+                            try:
+                                # 값을 문자열로 변환하고 공백 제거
+                                b_str = str(b_cell).strip()
+                                c_str = str(c_cell).strip()
+                                
+                                # 동과 라인이 일치하는지 직접 비교
+                                # 입력창에서는 동 이름이 "101동"이 아니라 "101"로 표기됨
+                                if b_str == dong_number:
+                                    # 동만 일치하면 일단 정보 저장 (라인 번호 없는 경우 대비)
+                                    try:
+                                        floor_num = int(f_cell)
+                                        if floor_num > highest_floor:
+                                            highest_floor = floor_num
+                                            found_highest_floor = True
+                                            log_message(f"옥상 처리: 동({dong_number}) 일치, 최고층 업데이트 - {highest_floor}층")
+                                        
+                                        # 라인까지 일치하면 정확히 해당 라인의 최고층 정보 사용
+                                        if line_number is not None and int(c_str) == line_number:
+                                            log_message(f"옥상 처리: 동/라인 정확히 일치! {dong_number}동 라인 {c_str}의 최고층: {f_cell}")
+                                            highest_floor = floor_num
+                                            found_highest_floor = True
+                                            log_message(f"옥상 처리: 정확한 라인 일치, 최고층 설정 - {floor_num}층")
+                                            # 정확한 라인 일치 시 더 이상 검색 불필요
+                                            break
+                                    except (ValueError, TypeError):
+                                        # 정수 변환 실패 시 정규식으로 시도
+                                        floor_match = re.search(r'(\d+)', str(f_cell))
+                                        if floor_match:
+                                            floor_num = int(floor_match.group(1))
+                                            if floor_num > highest_floor:
+                                                highest_floor = floor_num
+                                                found_highest_floor = True
+                                                log_message(f"옥상 처리: 동({dong_number}) 일치, 최고층 업데이트(정규식) - {floor_num}층")
+                            except Exception as e:
+                                log_message(f"⚠️ 옥상 처리: 행 {row} 처리 중 오류: {str(e)}")
+                        
+                        if found_highest_floor:
+                            log_message(f"옥상 처리: 입력창 시트에서 찾은 최고층: {highest_floor}층")
+                            # 추가 로깅 - 발견된 정보 요약
+                            log_message(f"▶▶▶ 옥상 위치 정보 요약: 동={dong}, 라인={line_number}, 최고층={highest_floor}층")
+                        else:
+                            log_message(f"⚠️ 옥상 처리: 입력창 시트에서 {dong} 라인 {line_number}의 최고층을 찾지 못함, 기본 방식 사용")
+                            # 기존 방식 사용 (A열과 B열에서 "층" 포함 셀 검색)
+                            for row in range(6, first_floor_row + 20):  # 1층 기준으로 위쪽 20행까지만 검색
+                                for col in [1, 2]:  # A열, B열 검사
+                                    cell_value = sheet.cell(row=row, column=col).value
+                                    if cell_value is not None and "층" in str(cell_value):
+                                        # 숫자 추출
+                                        floor_match = re.search(r'(\d+)층', str(cell_value))
+                                        if floor_match:
+                                            floor_num = int(floor_match.group(1))
+                                            if floor_num > highest_floor:
+                                                highest_floor = floor_num
+                                                highest_floor_row = row
+                    
+                    # 최고층 위치 계산
+                    # 찾은 최고층에 해당하는 행 계산 (1층 기준으로 계산)
+                    highest_floor_row = first_floor_row - (highest_floor - 1)
                     
                     # 가장 높은 층 바로 위 행 사용
                     floor_row = highest_floor_row - 1
-                    log_message(f"옥상 처리: 가장 높은 층({highest_floor}층)의 위치는 {highest_floor_row}행, 옥상 위치로 {floor_row}행 사용")
+                    log_message(f"옥상 처리: 최고층({highest_floor}층)의 위치는 {highest_floor_row}행, 옥상 위치로 {floor_row}행 사용")
                 
                 # 지하인 경우 가장 낮은 층을 찾아 그 아래 행을 사용
                 elif is_basement:
-                    # 1층 바로 아래 행 사용
-                    floor_row = first_floor_row + 1
-                    log_message(f"지하 처리: 1층 위치는 {first_floor_row}행, 지하 위치로 {floor_row}행 사용")
+                    # 입력창 시트에서 동, 라인별 시작층(최저층) 찾기
+                    # 초기값 설정
+                    lowest_floor = 1
+                    lowest_floor_row = first_floor_row
+                    
+                    # 이미 라인 번호가 추출된 경우 활용
+                    line_number = None
+                    
+                    # 이상배관LIST 시트에서 D열 값 추출 (라인 번호 확인)
+                    if list_sheet_info and wb:
+                        # D열에서 라인 정보 추출
+                        if "d_value" in list_sheet_info and list_sheet_info["d_value"] is not None:
+                            d_val = list_sheet_info["d_value"]
+                            d_val_str = str(d_val)
+                            d_val_clean = d_val_str.replace("호", "").strip()
+                            d_number = ''.join(filter(str.isdigit, d_val_clean))
+                            
+                            if d_number:
+                                try:
+                                    line_number = int(d_number)
+                                    log_message(f"지하 처리: D열에서 라인 정보 추출 (라인 {line_number})")
+                                except ValueError:
+                                    log_message(f"⚠️ 지하 처리: D열 숫자 변환 실패: '{d_number}'")
+                    
+                    # 입력창 시트가 있는지 확인
+                    if wb and '입력창' in wb.sheetnames:
+                        input_sheet = wb['입력창']
+                        dong_number = ''.join(filter(str.isdigit, dong))
+                        log_message(f"지하 처리: 입력창 시트에서 {dong}(숫자:{dong_number})과 라인 {line_number} 검색")
+                        
+                        # 입력창 시트 구조 로깅 (첫 5행만)
+                        log_message(f"▶ 입력창 시트 구조 확인 (처음 5행):")
+                        for r in range(1, min(6, input_sheet.max_row + 1)):
+                            row_data = []
+                            for c in range(1, min(8, input_sheet.max_column + 1)):
+                                cell_value = input_sheet.cell(row=r, column=c).value
+                                row_data.append(f"{get_column_letter(c)}:{cell_value}")
+                            log_message(f"  행 {r}: {', '.join(row_data)}")
+                        
+                        # 동과 라인 정보로 최저층 검색
+                        found_lowest_floor = False
+                        
+                        for row in range(9, input_sheet.max_row + 1):  # 데이터는 9행부터 시작하는 것으로 보임
+                            b_cell = input_sheet.cell(row=row, column=2).value  # B열: 동
+                            c_cell = input_sheet.cell(row=row, column=3).value  # C열: 호(라인)
+                            d_cell = input_sheet.cell(row=row, column=4).value  # D열: 시작층(최저층)
+                            
+                            # 셀 값이 None이면 건너뛰기
+                            if b_cell is None or c_cell is None or d_cell is None:
+                                continue
+                            
+                            try:
+                                # 값을 문자열로 변환하고 공백 제거
+                                b_str = str(b_cell).strip()
+                                c_str = str(c_cell).strip()
+                                
+                                # 동과 라인이 일치하는지 직접 비교
+                                # 입력창에서는 동 이름이 "101동"이 아니라 "101"로 표기됨
+                                if b_str == dong_number:
+                                    # 동만 일치하면 일단 정보 저장 (라인 번호 없는 경우 대비)
+                                    try:
+                                        floor_num = int(d_cell)
+                                        # 시작층은 최솟값을 저장 (가장 낮은 층 찾기)
+                                        if lowest_floor == 1 or floor_num < lowest_floor:
+                                            lowest_floor = floor_num
+                                            found_lowest_floor = True
+                                            log_message(f"지하 처리: 동({dong_number}) 일치, 시작층 업데이트 - {lowest_floor}층")
+                                        
+                                        # 라인까지 일치하면 정확히 해당 라인의 시작층 정보 사용
+                                        if line_number is not None and int(c_str) == line_number:
+                                            log_message(f"지하 처리: 동/라인 정확히 일치! {dong_number}동 라인 {c_str}의 시작층: {d_cell}")
+                                            lowest_floor = floor_num
+                                            found_lowest_floor = True
+                                            log_message(f"지하 처리: 정확한 라인 일치, 시작층 설정 - {floor_num}층")
+                                            # 정확한 라인 일치 시 더 이상 검색 불필요
+                                            break
+                                    except (ValueError, TypeError):
+                                        # 정수 변환 실패 시 정규식으로 시도
+                                        floor_match = re.search(r'(\d+)', str(d_cell))
+                                        if floor_match:
+                                            floor_num = int(floor_match.group(1))
+                                            if lowest_floor == 1 or floor_num < lowest_floor:
+                                                lowest_floor = floor_num
+                                                found_lowest_floor = True
+                                                log_message(f"지하 처리: 동({dong_number}) 일치, 시작층 업데이트(정규식) - {floor_num}층")
+                            except Exception as e:
+                                log_message(f"⚠️ 지하 처리: 행 {row} 처리 중 오류: {str(e)}")
+                        
+                        if found_lowest_floor:
+                            log_message(f"지하 처리: 입력창 시트에서 찾은 시작층(최저층): {lowest_floor}층")
+                            # 추가 로깅 - 발견된 정보 요약
+                            log_message(f"▶▶▶ 지하 위치 정보 요약: 동={dong}, 라인={line_number}, 시작층={lowest_floor}층")
+                        else:
+                            log_message(f"⚠️ 지하 처리: 입력창 시트에서 {dong} 라인 {line_number}의 시작층을 찾지 못함, 기본 방식 사용 (1층)")
+                            lowest_floor = 1  # 기본값으로 1층 사용
+                    else:
+                        log_message(f"⚠️ 지하 처리: '입력창' 시트를 찾을 수 없음, 기본 방식 사용 (1층)")
+                        lowest_floor = 1  # 기본값으로 1층 사용
+                    
+                    # 최저층 위치 계산
+                    lowest_floor_row = first_floor_row - (lowest_floor - 1)
+                    
+                    # 최저층 바로 아래 행 사용
+                    floor_row = lowest_floor_row + 1
+                    log_message(f"지하 처리: 시작층({lowest_floor}층)의 위치는 {lowest_floor_row}행, 지하 위치로 {floor_row}행 사용")
             else:
                 # 일반 케이스: 층수에 따른 행 계산
                 floor_row = first_floor_row - (floor - 1)
@@ -625,7 +820,7 @@ class ExcelProcessor:
                                 else:
                                     # 범위를 벗어난 경우
                                     if line_number <= 0:
-                                        room_col = dong_start_col  # 첫 열 사용
+                                        room_col = dong_start_col  # 첫 번째 열 사용
                                         log_message(f"라인 {line_number}이 최소값 이하, 첫 번째 열 사용: {get_column_letter(room_col)}")
                                     elif line_number > (dong_end_col - dong_start_col + 1):
                                         room_col = dong_end_col  # 마지막 열 사용
@@ -667,16 +862,18 @@ class ExcelProcessor:
                     else:
                         # 계산된 위치가 범위를 벗어나는 경우 경고
                         log_message(f"⚠️ 계산된 {room_number_clean}호 위치가 동 범위를 벗어납니다 ({column_offset+1}번째 위치, 범위는 1-{dong_end_col-dong_start_col+1})", True)
+                        # 범위를 벗어난 경우 처리하지 않고 함수 종료
+                        return None
                         
-                        # 범위를 벗어난 경우 처리 방법:
-                        if room_number_int <= 0:
-                            # 0이하 호수는 첫 번째 열 사용
-                            room_col = dong_start_col
-                            log_message(f"범위를 벗어나므로 첫 번째 열({get_column_letter(room_col)})로 조정")
-                        elif room_number_int > (dong_end_col - dong_start_col + 1):
-                            # 범위를 초과하는 호수는 마지막 열 사용
-                            room_col = dong_end_col
-                            log_message(f"범위를 벗어나므로 마지막 열({get_column_letter(room_col)})로 조정")
+                        # 아래 코드는 더 이상 사용하지 않음
+                        # if room_number_int <= 0:
+                        #     # 0이하 호수는 첫 번째 열 사용
+                        #     room_col = dong_start_col
+                        #     log_message(f"범위를 벗어나므로 첫 번째 열({get_column_letter(room_col)})로 조정")
+                        # elif room_number_int > (dong_end_col - dong_start_col + 1):
+                        #     # 범위를 초과하는 호수는 마지막 열 사용
+                        #     room_col = dong_end_col
+                        #     log_message(f"범위를 벗어나므로 마지막 열({get_column_letter(room_col)})로 조정")
                 
                 except ValueError:
                     # 호수를 숫자로 변환할 수 없는 경우 (예: 비표준 호수)
@@ -739,6 +936,8 @@ class ExcelProcessor:
             # 노란색 배경 설정
             yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
             target_cell.fill = yellow_fill
+            # 글자를 굵고 빨간색으로 설정
+            target_cell.font = Font(color="FF0000", size=10, bold=True)
             
             # 이상배관LIST의 NO 컬럼 값(index_no)을 셀에 입력
             from openpyxl.styles import Font
