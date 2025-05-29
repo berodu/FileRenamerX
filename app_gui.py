@@ -266,7 +266,7 @@ class TaskieXApp:
     """TaskieX 애플리케이션 메인 클래스"""
     def __init__(self, root):
         self.root = root
-        self.root.title("TaskieX")
+        self.root.title("TaskieX 1.8.0")
         self.root.geometry("700x900")  # 창 크기 설정
         self.root.minsize(700, 600)    # 최소 창 크기 제한
         
@@ -757,12 +757,27 @@ class TaskieXApp:
                 
             # 현재 모드 확인
             current_mode = self.work_mode.get()
+
+            # 엑셀 파일 열림 여부 체크 함수
+            def is_file_open(filepath):
+                try:
+                    with open(filepath, 'a+'):
+                        return False
+                except PermissionError:
+                    return True
+                except Exception:
+                    return False
+
+            # 엑셀 파일을 사용하는 모드에서만 체크
+            if current_mode in ["update_pipe", "update_status"]:
+                excel_path = self.excel_path.get()
+                if not excel_path:
+                    messagebox.showerror("오류", "엑셀 파일을 선택해주세요.")
+                    return
+                if is_file_open(excel_path):
+                    messagebox.showerror("오류", f"엑셀 파일이 열려 있습니다. 파일을 닫고 다시 시도해 주세요.\n\n{excel_path}")
+                    return
             
-            # 엑셀 모드인 경우 엑셀 파일 선택 여부 확인
-            if current_mode == "excel" and not self.excel_path.get():
-                messagebox.showerror("오류", "엑셀 파일을 선택해주세요.")
-                return
-                
             # UI 업데이트
             self.update_ui_for_processing(True)
             
@@ -1805,7 +1820,7 @@ class TaskieXApp:
                                         for f_name, f_info in processed_riser_files.items():
                                             if (f_info["building"] == building and 
                                                 f_info["line"] == line and 
-                                                (f_info["pipe"] == pipe_name or pipe_name in f_info["pipe"])):
+                                                (f_info["pipe"] == pipe_name)):
                                                 # 현재 처리 중인 파일에서 괄호 정보 가져오기
                                                 # '명판오류' 괄호를 제외한 다른 괄호만 찾기
                                                 original_filename = f_name  # 원본 파일명 저장
@@ -1843,7 +1858,7 @@ class TaskieXApp:
                                         for f_name, f_info in processed_riser_files.items():
                                             if (f_info["building"] == building and 
                                                 f_info["line"] == line and 
-                                                (f_info["pipe"] == pipe_name or pipe_name in f_info["pipe"])):
+                                                (f_info["pipe"] == pipe_name)):
                                                 # 파일 처리 성공 기록
                                                 file_results[f_name] = {
                                                     "status": "성공",
@@ -2355,3 +2370,5 @@ def main():
 
 if __name__ == "__main__":
     main() 
+    
+# pyinstaller --noconsole app_gui.py
