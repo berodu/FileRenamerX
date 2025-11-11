@@ -1,87 +1,78 @@
-# TaskieX
+# FileRenamerX
 
-배관 검사 이미지 및 비디오 처리를 위한 유틸리티 프로그램입니다.
-
-## 주요 기능
-
-1. **파일명 변경 모드**
-   - 비디오 파일에서 프레임을 추출하고 Vision API와 ChatGPT로 분석하여 파일명 자동 변경
-   - 이미지 파일의 이름을 직전에 처리된 비디오 파일명 기준으로 변경
-
-2. **이미지 삽입 모드**
-   - 이미지 파일명으로부터 정보(동, 호, 배관종류, 배관명 등)를 추출하여 Excel 파일에 삽입
-   - 엑셀 시트별로 구분하여 이미지와 정보 관리
-   - 이상위치 시트에 해당 셀 위치 노란색으로 자동 표시
-
-## 바로 실행하기
-
-### Windows 사용자
-
-1. **간편 시작**
-   - `바로실행.bat` 파일을 더블클릭하세요.
-   - 자동으로 Python 설치 및 필요한 모든 패키지를 설치한 후 프로그램을 실행합니다.
-   - 첫 실행 시 약간의 시간이 소요될 수 있습니다.
-
-### Mac 사용자
-
-1. **간편 시작**
-   - `TaskieX 실행하기.command` 파일에 실행 권한을 부여하세요:
-     ```
-     chmod +x "TaskieX 실행하기.command"
-     ```
-   - `TaskieX 실행하기.command` 파일을 더블클릭하세요.
-   - 자동으로 필요한 환경을 설정하고 프로그램을 실행합니다.
-
-### Linux 사용자
-
-1. **간편 시작**
-   - `TaskieX 실행하기.sh` 파일에 실행 권한을 부여하세요:
-     ```
-     chmod +x "TaskieX 실행하기.sh"
-     ```
-   - 다음 명령어로 실행하세요:
-     ```
-     ./TaskieX\ 실행하기.sh
-     ```
-   - 자동으로 필요한 환경을 설정하고 프로그램을 실행합니다.
+배관 검사 비디오 처리를 위한 파일명 자동 변경 유틸리티 프로그램입니다.
 
 ## API 키 설정
 
-다음 폴더에 각각의 API 키 파일을 넣어야 합니다:
-- `vision-api-key/`: Google Vision API 키 파일 (JSON)
-- `chatgpt-api-key/`: OpenAI API 키 파일 (텍스트, `chatgpt_api_key.txt` 이름으로 저장)
-- `gemini-api-key/`: Google Gemini API 키 파일 (텍스트, `gemini-api-key.txt` 이름으로 저장, 선택적)
+FileRenamerX를 사용하려면 다음 API 키가 필요합니다:
 
-## 파일 형식 및 구조
+### 필요한 API 키
 
-### 파일명 변경 모드
-작업 폴더에 비디오 파일과 이미지 파일을 넣고 실행합니다.
+1. **Google Vision API** (필수)
+   - OCR(텍스트 인식) 기능에 사용됩니다
+   - 비디오 프레임에서 텍스트를 추출합니다
 
-### 이미지 삽입 모드
-파일명은 다음 형식을 따라야 합니다:
+2. **OpenAI ChatGPT API** (필수)
+   - 추출된 텍스트를 분석하여 파일명을 생성합니다
+
+### API 키 설정 방법
+
+#### 1. Google Vision API 키 설정
+
+1. **Google Cloud Console에서 서비스 계정 키 생성**
+   - [Google Cloud Console](https://console.cloud.google.com/) 접속
+   - 프로젝트 선택 또는 새 프로젝트 생성
+   - "API 및 서비스" > "사용자 인증 정보" 메뉴로 이동
+   - "서비스 계정" 생성 또는 기존 계정 선택
+   - "키" 탭에서 "키 추가" > "JSON 만들기" 선택
+   - JSON 키 파일이 다운로드됩니다
+
+2. **Vision API 활성화**
+   - "API 및 서비스" > "라이브러리" 메뉴로 이동
+   - "Cloud Vision API" 검색 후 활성화
+
+3. **키 파일 배치**
+   - 다운로드한 JSON 파일을 `vision-api-key/` 폴더에 복사
+   - 파일명을 `vision-ocr-454121-572fb601794b.json`으로 변경 (또는 코드에서 지정한 파일명 사용)
+
+**폴더 구조:**
 ```
-[동] [호] [배관종류] [배관명]_[이상소견]_[이상위치]
+FileRenamerX/
+└── vision-api-key/
+    └── vision-ocr-454121-572fb601794b.json
 ```
 
-예시: `101동 205호 세대매립관 앞발코니배수_물고임_입구.jpg`
+#### 2. ChatGPT API 키 설정
 
-## 사용 방법
+1. **OpenAI API 키 발급**
+   - [OpenAI Platform](https://platform.openai.com/) 접속
+   - 계정 로그인 또는 회원가입
+   - "API keys" 메뉴로 이동
+   - "Create new secret key" 클릭하여 새 API 키 생성
+   - 생성된 키를 복사 (다시 볼 수 없으므로 안전하게 보관)
 
-1. TaskieX 실행
-2. 작업 모드 선택 (파일명 변경 또는 이미지 삽입)
-3. 작업 폴더 선택
-4. 이미지 삽입 모드의 경우 엑셀 파일도 선택
-5. '시작' 버튼을 클릭하여 처리 시작
+2. **키 파일 생성**
+   - `chatgpt-api-key/` 폴더 생성
+   - `chatgpt_api_key.txt` 파일 생성
+   - 복사한 API 키를 파일에 저장 (공백이나 줄바꿈 없이)
 
-자세한 사용 방법은 USER_MANUAL.md 파일을 참조하세요.
+**폴더 구조:**
+```
+FileRenamerX/
+└── chatgpt-api-key/
+    └── chatgpt_api_key.txt
+```
 
-## 문제 해결
+### API 키 확인
 
-- **실행 파일 실행 시 오류**: 관리자 권한으로 실행해 보세요.
-- **API 키 오류**: API 키 파일이 올바른 폴더에 있는지 확인하세요.
-- **파일 인식 오류**: 파일 형식과 이름이 올바른지 확인하세요.
-- **Mac/Linux에서 실행 권한 오류**: `chmod +x "TaskieX 실행하기.command"` 또는 `chmod +x "TaskieX 실행하기.sh"`로 실행 권한을 부여하세요.
+프로그램 실행 시 API 키가 올바르게 설정되어 있는지 자동으로 확인합니다. 
+API 키가 없거나 잘못된 경우 오류 메시지가 표시됩니다.
 
-## 라이선스
+### API 사용량 및 비용
 
-Copyright © 2024 
+- **Google Vision API**: 사용량에 따라 과금됩니다. 자세한 내용은 [Google Cloud 가격 정책](https://cloud.google.com/vision/pricing) 참고
+- **OpenAI ChatGPT API**: 사용량에 따라 과금됩니다. 자세한 내용은 [OpenAI 가격 정책](https://openai.com/pricing) 참고
+
+**비용 절감 팁:**
+- API 요청 사이에 최소 1초 간격이 자동으로 유지됩니다
+- 불필요한 재시작을 피하여 API 호출 횟수를 줄이세요

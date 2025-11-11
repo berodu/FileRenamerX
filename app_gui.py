@@ -21,7 +21,6 @@ from openpyxl.utils import get_column_letter
 # 기존 분석기 및 비디오 프로세서 임포트
 from video_processor import VideoProcessor
 from image_analyzer import GoogleVisionAnalyzer
-from excel_processor import ExcelProcessor  # 새로 추가한 모듈
 from main import is_valid_format, check_api_keys, validate_frame_times, is_valid_video_file, clear_directory
 
 # 로깅 설정
@@ -262,11 +261,11 @@ class RedirectText:
         self.text_widget.configure(state='disabled')
         self.message_count = 0
 
-class TaskieXApp:
-    """TaskieX 애플리케이션 메인 클래스"""
+class FileRenamerXApp:
+    """FileRenamerX 애플리케이션 메인 클래스"""
     def __init__(self, root):
         self.root = root
-        self.root.title("TaskieX 1.8.0")
+        self.root.title("FileRenamerX 1.0.0")
         self.root.geometry("700x900")  # 창 크기 설정
         self.root.minsize(700, 600)    # 최소 창 크기 제한
         
@@ -278,15 +277,10 @@ class TaskieXApp:
         self.selected_files = []       # 선택된 파일 목록
 
         # UI 변수 초기화
-        self.excel_path = tk.StringVar(value="")
-        self.work_mode = tk.StringVar(value="rename")  # 기본값: 파일명 변경 모드
         self.folder_path = tk.StringVar(value="./작업폴더")
         
         # 작업 설정 초기화
         self.frame_times_value = [2, 3, 5]  # 기본 프레임 시간 (초)
-        
-        # 엑셀 프로세서 초기화
-        self.excel_processor = ExcelProcessor()
 
         # UI 구성
         self.create_widgets()
@@ -314,10 +308,7 @@ class TaskieXApp:
         main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 작업 모드 선택 프레임
-        self.create_mode_frame(main_frame)
-        
-        # 2. 설정 프레임
+        # 1. 설정 프레임
         self.create_settings_frame(main_frame)
         
         # 3. 도움말 프레임
@@ -333,36 +324,6 @@ class TaskieXApp:
         self.status_bar = ttk.Label(self.root, text="준비", relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def create_mode_frame(self, parent):
-        """작업 모드 선택 프레임 생성"""
-        mode_frame = ttk.LabelFrame(parent, text="작업 모드", padding=10)
-        mode_frame.pack(fill=tk.X, pady=5)
-        
-        # 모드 선택 라디오 버튼
-        ttk.Radiobutton(
-            mode_frame, 
-            text="파일명 변경", 
-            variable=self.work_mode, 
-            value="rename", 
-            command=self.toggle_mode
-        ).pack(side=tk.LEFT, padx=10)
-        
-        ttk.Radiobutton(
-            mode_frame, 
-            text="이상 배관 업데이트", 
-            variable=self.work_mode, 
-            value="update_pipe", 
-            command=self.toggle_mode
-        ).pack(side=tk.LEFT, padx=10)
-        
-        ttk.Radiobutton(
-            mode_frame, 
-            text="작업 현황 업데이트", 
-            variable=self.work_mode, 
-            value="update_status", 
-            command=self.toggle_mode
-        ).pack(side=tk.LEFT, padx=10)
-
     def create_settings_frame(self, parent):
         """설정 프레임 생성"""
         self.settings_frame = ttk.LabelFrame(parent, text="설정", padding=10)
@@ -374,7 +335,7 @@ class TaskieXApp:
         
         # 작업 폴더 선택 UI
         self.folder_button_frame = ttk.Frame(self.path_frame)
-        self.folder_button_frame.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.folder_button_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Button(
             self.folder_button_frame, 
@@ -384,25 +345,6 @@ class TaskieXApp:
         
         self.path_label = ttk.Label(self.folder_button_frame, text="./작업폴더")
         self.path_label.pack(side=tk.LEFT, padx=5)
-        
-        # 엑셀 파일 선택 UI (초기에는 숨김)
-        self.excel_frame = ttk.Frame(self.path_frame)
-        self.excel_frame.grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        
-        ttk.Button(
-            self.excel_frame, 
-            text="엑셀 파일 선택", 
-            command=self.browse_excel
-        ).pack(side=tk.LEFT, padx=5)
-        
-        self.excel_label = ttk.Label(self.excel_frame, text="선택되지 않음")
-        self.excel_label.pack(side=tk.LEFT, padx=5)
-        
-        # 초기 모드에 따라 엑셀 프레임 표시/숨김
-        if self.work_mode.get() in ["update_pipe", "update_status"]:
-            self.excel_frame.grid()
-        else:
-            self.excel_frame.grid_remove()
 
     def create_help_frame(self, parent):
         """도움말 프레임 생성"""
@@ -422,7 +364,11 @@ class TaskieXApp:
         self.help_text.tag_configure("bold", font=("Malgun Gothic", 9, "bold"))
         
         # 초기 도움말 텍스트 설정
-        self.update_help_text()
+        self.help_text.insert(tk.END, "파일명 변경 모드\n", "bold")
+        self.help_text.insert(tk.END, "작업 폴더 : 비디오 파일과 이미지 파일이 있는 폴더\n")
+        self.help_text.insert(tk.END, "프레임 시간 : 비디오에서 추출할 프레임 시간(초)\n")
+        self.help_text.insert(tk.END, "바로에코 제품으로 인코딩된 동영상만 처리 가능합니다.\n")
+        self.help_text.configure(state='disabled')
 
     def create_button_frame(self, parent):
         """버튼 프레임 생성"""
@@ -488,88 +434,6 @@ class TaskieXApp:
         # 프로그램 종료
         self.root.destroy()
 
-    def update_help_text(self):
-        """작업 모드에 따라 도움말 텍스트 업데이트"""
-        self.help_text.config(state=tk.NORMAL)
-        self.help_text.delete(1.0, tk.END)
-        
-        mode = self.work_mode.get()
-        
-        if mode == "rename":
-            # 파일명 변경 모드 도움말
-            self.help_text.insert(tk.END, "- 파일명 변경 모드\n", "bold")
-            self.help_text.insert(tk.END, "작업폴더 : 파일명을 변경할 동영상, 이미지 파일이 저장되어 있는 폴더\n")
-            self.help_text.insert(tk.END, "동영상 파일은 Vision API와 ChatGPT로 분석하여 파일명이 변경됩니다.\n")
-            self.help_text.insert(tk.END, "이미지 파일은 직전에 처리된 동영상 파일명을 기준으로 이름이 변경됩니다.")
-        elif mode == "update_pipe":
-            # 이상 배관 업데이트 모드 도움말
-            self.help_text.insert(tk.END, "- 이상 배관 업데이트 모드\n", "bold")
-            self.help_text.insert(tk.END, "작업폴더 : 엑셀 파일에 삽입할 이미지 파일이 저장되어 있는 폴더\n")
-            self.help_text.insert(tk.END, "엑셀파일 : 보고서 엑셀 파일\n")
-            self.help_text.insert(tk.END, "이미지 파일명 : '[동] [호] [배관종류] [배관명]_[이상소견]_[이상위치]' 형식\n")
-            self.help_text.insert(tk.END, "결과 : '2.이상배관위치'와 '3.이상배관LIST' 시트에 작성")
-        else:  # update_status 모드
-            # 작업 현황 업데이트 모드 도움말
-            self.help_text.insert(tk.END, "- 작업 현황 업데이트 모드\n", "bold")
-            self.help_text.insert(tk.END, "작업폴더 : 분석할 동영상 파일이 저장되어 있는 폴더\n")
-            self.help_text.insert(tk.END, "엑셀파일 : 작업 현황을 업데이트할 엑셀 파일\n")
-            self.help_text.insert(tk.END, "동영상 파일명 : '[동] [호] [배관종류] [배관명]' 형식\n")
-            self.help_text.insert(tk.END, "결과 : '1.작업현황_[배관종류]' 시트에 작업 완료 표시")
-            
-        self.help_text.config(state=tk.DISABLED)
-
-    def toggle_mode(self):
-        """작업 모드 전환 시 UI 업데이트"""
-        mode = self.work_mode.get()
-        
-        # 로그 초기화
-        if hasattr(self, 'redirect'):
-            self.redirect.clear()
-        
-        # 도움말 텍스트 업데이트
-        self.update_help_text()
-        
-        # 현재 작업 폴더 경로
-        current_folder = self.folder_path.get()
-        
-        # 이상 배관 업데이트 모드 또는 작업 현황 업데이트 모드
-        if mode in ["update_pipe", "update_status"]:
-            # 엑셀 파일 선택 프레임 표시
-            self.excel_frame.grid()
-            # 선택된 파일 목록 초기화
-            self.selected_files = []
-            
-            if mode == "update_pipe":
-                # 상태 메시지 업데이트
-                print("이상 배관 업데이트 모드로 전환되었습니다.")
-                print("작업 폴더의 이미지 파일들을 엑셀에 삽입합니다.")
-                print("작업 폴더와 엑셀 파일을 선택해주세요.")
-                
-                # 현재 폴더가 설정되어 있으면 이미지 파일 목록 표시
-                if os.path.exists(current_folder):
-                    self.display_image_files(current_folder)
-            else:  # update_status 모드
-                # 상태 메시지 업데이트
-                print("작업 현황 업데이트 모드로 전환되었습니다.")
-                print("작업 폴더의 동영상 파일을 분석하여 엑셀의 작업 현황을 업데이트합니다.")
-                print("작업 폴더와 엑셀 파일을 선택해주세요.")
-                
-                # 현재 폴더가 설정되어 있으면 동영상 파일 목록 표시
-                if os.path.exists(current_folder):
-                    self.display_video_files(current_folder)
-        
-        # 파일명 변경 모드
-        else:
-            # 엑셀 파일 선택 프레임 숨기기
-            self.excel_frame.grid_remove()
-            # 상태 메시지 업데이트
-            print("파일명 변경 모드로 전환되었습니다.")
-            print("작업 폴더의 비디오/이미지 파일 이름을 Vision API+ChatGPT로 분석하여 변경합니다.")
-            print("작업 폴더를 선택해주세요.")
-            
-            # 현재 폴더가 설정되어 있으면 대상 파일 목록 표시
-            if os.path.exists(current_folder):
-                self.display_target_files(current_folder)
 
     def browse_folder(self):
         """작업 폴더 선택"""
@@ -581,47 +445,8 @@ class TaskieXApp:
         self.selected_files = []  # 폴더를 선택하면 개별 파일 선택 초기화
         self.path_label.config(text=f"{folder}")
         
-        # 현재 모드 확인
-        current_mode = self.work_mode.get()
-        
-        # 폴더 내 파일 목록 표시 (모드에 따라 다르게)
-        if current_mode == "rename":
-            # 파일명 변경 모드에서는 비디오/이미지 파일 표시
-            self.display_target_files(folder)
-        elif current_mode == "update_pipe":
-            # 이상 배관 업데이트 모드에서는 이미지 파일만 표시
-            self.display_image_files(folder)
-        elif current_mode == "update_status":
-            # 작업 현황 업데이트 모드에서는 동영상 파일만 표시
-            self.display_video_files(folder)
-    
-    def browse_excel(self):
-        """엑셀 파일 선택"""
-        if self.work_mode.get() not in ["update_pipe", "update_status"]:
-            return
-        
-        file_path = filedialog.askopenfilename(
-            title="엑셀 파일을 선택하세요",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-        )
-        
-        if not file_path:
-            return
-            
-        self.excel_path.set(file_path)
-        self.excel_label.config(text=f"{os.path.basename(file_path)}")
-        
-        # 모드에 따라 다른 메시지 출력
-        mode = self.work_mode.get()
-        if mode == "update_pipe":
-            print(f"✓ 선택된 엑셀 파일: {os.path.basename(file_path)}")
-        elif mode == "update_status":
-            print(f"✓ 선택된 엑셀 파일: {os.path.basename(file_path)}")
-            print(f"📋 작업 현황 업데이트 모드 안내:")
-            print(f"  • 동영상 파일명은 '[동] [호] [배관종류] [배관명]' 형식이어야 합니다.")
-            print(f"  • 예: '103동 1호 입상관 공용오수.mp4', '102동 1903호 세대매립관 세탁.mp4'")
-            print(f"  • 지원되는 배관종류: 입상관, 세대매립관, 세대PD, 세대층상배관, 횡주관")
-            print(f"  • 엑셀 파일의 '1.작업현황_[배관종류]' 시트에 작업 현황이 표시됩니다.")
+        # 파일명 변경 모드에서는 비디오/이미지 파일 표시
+        self.display_target_files(folder)
 
     def display_target_files(self, folder):
         """폴더 내 비디오/이미지 파일 목록 표시 (파일명 변경 모드)"""
@@ -755,28 +580,6 @@ class TaskieXApp:
                 messagebox.showerror("오류", "작업 폴더를 선택해주세요.")
                 return
                 
-            # 현재 모드 확인
-            current_mode = self.work_mode.get()
-
-            # 엑셀 파일 열림 여부 체크 함수
-            def is_file_open(filepath):
-                try:
-                    with open(filepath, 'a+'):
-                        return False
-                except PermissionError:
-                    return True
-                except Exception:
-                    return False
-
-            # 엑셀 파일을 사용하는 모드에서만 체크
-            if current_mode in ["update_pipe", "update_status"]:
-                excel_path = self.excel_path.get()
-                if not excel_path:
-                    messagebox.showerror("오류", "엑셀 파일을 선택해주세요.")
-                    return
-                if is_file_open(excel_path):
-                    messagebox.showerror("오류", f"엑셀 파일이 열려 있습니다. 파일을 닫고 다시 시도해 주세요.\n\n{excel_path}")
-                    return
             
             # UI 업데이트
             self.update_ui_for_processing(True)
@@ -792,7 +595,7 @@ class TaskieXApp:
             print(f"\n[{current_time}] 작업 시작")
             
             # 파일명 변경 모드
-            if current_mode == "rename":
+            if True:  # 항상 파일명 변경 모드
                 # 작업 폴더 내 파일 확인
                 if not self.selected_files:
                     # 폴더 내 모든 비디오/이미지 파일 확인
@@ -815,7 +618,7 @@ class TaskieXApp:
                 # 임시 디렉토리 생성
                 try:
                     self.cleanup_temp_dir()  # 기존 임시 폴더 정리
-                    self.temp_dir = tempfile.mkdtemp(prefix="taskiex_temp_")
+                    self.temp_dir = tempfile.mkdtemp(prefix="filerenamerx_temp_")
                     output_dir = self.temp_dir
                     logger.info(f"임시 폴더 생성: {self.temp_dir}")
                 except Exception as e:
@@ -833,7 +636,7 @@ class TaskieXApp:
             # 멀티스레딩으로 작업 실행
             thread = threading.Thread(
                 target=self.process_in_thread,
-                args=(current_mode, work_dir, output_dir, frame_times)
+                args=("rename", work_dir, output_dir, frame_times)  # 항상 rename 모드
             )
             thread.daemon = True
             thread.start()
@@ -892,6 +695,34 @@ class TaskieXApp:
             # 비디오 프로세서 및 이미지 분석기 초기화
             print("✓ 작업 초기화 중...")
             video_processor = VideoProcessor(work_dir, output_dir)
+            
+            # 동영상 파일 메타데이터 검증
+            print("✓ 동영상 파일 메타데이터 검증 중...")
+            video_files = [f for f in os.listdir(work_dir) 
+                          if os.path.isfile(os.path.join(work_dir, f)) and 
+                          is_valid_video_file(os.path.join(work_dir, f))]
+            
+            if video_files:
+                invalid_files = []
+                for video_file in video_files:
+                    video_path = os.path.join(work_dir, video_file)
+                    is_valid, error_msg = video_processor.validate_video_metadata(video_path)
+                    if not is_valid:
+                        invalid_files.append((video_file, error_msg))
+                        print(f"  ❌ {video_file}: 바로에코 제품을 사용해 주세요")
+                
+                if invalid_files:
+                    # 검증 실패 시 팝업 표시 및 작업 중단
+                    error_message = "바로에코 제품을 사용해 주세요"
+                    
+                    # 메인 스레드에서 팝업 표시를 위해 root.after 사용
+                    self.root.after(0, lambda: messagebox.showerror("동영상 파일 검증 실패", error_message))
+                    self.finish_process()
+                    return
+                else:
+                    print(f"  ✓ 모든 동영상 파일 검증 완료 ({len(video_files)}개)")
+            else:
+                print("  ⚠️ 동영상 파일이 없습니다. 이미지 파일만 처리합니다.")
             
             # 분석기 초기화
             try:
@@ -1309,92 +1140,6 @@ class TaskieXApp:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n[{current_time}] 작업 종료")
 
-    def process_excel(self, image_folder, excel_path):
-        """이미지 삽입 모드: 이미지 폴더의 이미지를 엑셀에 삽입"""
-        try:
-            # 이미지 파일 수 확인
-            image_files = [f for f in os.listdir(image_folder) 
-                          if os.path.isfile(os.path.join(image_folder, f)) and 
-                          is_valid_image_file(os.path.join(image_folder, f))]
-            
-            total_images = len(image_files)
-            if total_images == 0:
-                print("❌ 처리할 이미지 파일이 없습니다.")
-                self.finish_process()
-                return
-            
-            print(f"✓ 총 {total_images}개 이미지 파일을 처리합니다.")
-            print(f"✓ 엑셀 파일에 이미지 삽입 작업을 시작합니다...")
-            
-            # 로그 수준 조정을 위한 간략화된 로그 함수
-            def log_func(message, level="info"):
-                # 중요 메시지만 출력 (에러, 경고, 주요 단계)
-                if level in ["error", "warning"] or message.startswith("✓") or message.startswith("❌"):
-                    print(message)
-            
-            # 메모리 정리
-            self.cleanup_memory()
-            
-            # 엑셀 처리기 호출 전에 엑셀 프로세스 다시 한번 확인
-            self.close_excel_file(excel_path)
-            
-            # 엑셀 처리기 호출 (로그 간략화 함수 전달)
-            result = self.excel_processor.process_images(excel_path, image_folder, log_func)
-            
-            if not result["success"]:
-                print(f"\n❌ 엑셀 처리 중 오류 발생: {result.get('error', '알 수 없는 오류')}")
-            else:
-                self.display_excel_result(result)
-            
-            # COM 객체 정리 및 메모리 정리
-            self.cleanup_com_objects()
-            self.cleanup_memory()
-            
-            # 작업 완료 후 한번 더 엑셀 프로세스 종료 확인
-            time.sleep(0.5)  # 잠시 대기 후 프로세스 확인
-            self.close_excel_file(excel_path)
-            
-        except Exception as e:
-            print(f"\n❌ 예상치 못한 오류 발생: {str(e)}")
-            import traceback
-            print(traceback.format_exc())  # 디버깅을 위한 스택 트레이스 출력
-        finally:
-            self.finish_process()
-            
-    def display_excel_result(self, result):
-        """엑셀 처리 결과 표시"""
-        # 이미지 처리 결과 요약 표시
-        processed_count = len(result.get('processed', []))
-        skipped_count = len(result.get('skipped', []))
-        
-        print(f"\n✓ 엑셀 작업 완료!")
-        print(f"  • 총 이미지: {result.get('total', 0)}개")
-        print(f"  • 처리 성공: {processed_count}개")
-        print(f"  • 처리 실패: {skipped_count}개")
-        
-        # 성공한 이미지 모두 표시
-        if processed_count > 0:
-            print("\n✓ 처리된 이미지:")
-            for i, img_info in enumerate(result.get('processed', []), 1):
-                # img_info가 문자열인 경우 바로 출력, 딕셔너리인 경우 경로 정보 추출
-                if isinstance(img_info, str):
-                    img_name = os.path.basename(img_info)
-                else:
-                    img_name = os.path.basename(img_info.get('image_path', ''))
-                print(f"  {i}. {img_name}")
-        
-        # 실패한 이미지가 있으면 모두 표시
-        if skipped_count > 0:
-            print("\n⚠️ 처리 실패한 이미지:")
-            for i, img_info in enumerate(result.get('skipped', []), 1):
-                # img_info가 문자열인 경우 바로 출력, 딕셔너리인 경우 경로와 이유 정보 추출
-                if isinstance(img_info, str):
-                    print(f"  {i}. {os.path.basename(img_info)}")
-                else:
-                    img_name = os.path.basename(img_info.get('image_path', ''))
-                    reason = img_info.get('reason', '알 수 없는 이유')
-                    print(f"  {i}. {img_name} - {reason}")
-            
     def cleanup_memory(self):
         """메모리 정리"""
         try:
@@ -1411,927 +1156,17 @@ class TaskieXApp:
         except Exception:
             pass
 
-    def close_excel_file(self, file_path):
-        """
-        지정된 엑셀 파일이 열려있다면 해당 프로세스만 종료하고, 
-        모든 엑셀 관련 리소스를 정리합니다.
-        
-        Args:
-            file_path (str): 확인할 엑셀 파일의 경로
-        
-        Returns:
-            bool: 프로세스가 종료되었으면 True, 아니면 False
-        """
-        if not file_path or not os.path.exists(file_path):
-            return False
-        
-        # 엑셀 프로세스 종료 (ExcelProcessor의 메서드 사용)
-        try:
-            # 로그 출력 없이 프로세스만 종료하기 위해 콜백 함수를 None으로 설정
-            return self.excel_processor.terminate_excel_processes(file_path, callback=None)
-        except Exception as e:
-            print(f"❌ 엑셀 파일 처리 중 오류: {str(e)}")
-            return False
-
-    def update_status_excel(self, video_folder, excel_path):
-        """작업 현황 업데이트 모드: 동영상 파일 정보로 엑셀의 작업 현황 업데이트"""
-        try:
-            from openpyxl import load_workbook
-            from openpyxl.styles import PatternFill, Font
-            import re
-            
-            # 각 파일별 처리 결과 추적용 딕셔너리 초기화
-            file_results = {}  # {파일명: {"status": "성공"|"실패", "pipe_type": 배관종류, "reason": 실패 이유}}
-            pipe_type_results = {}  # {배관종류: {"files": [성공한 파일들], "failed": [실패한 파일들 + 이유]}}
-            
-            # 처리된 파일 추적
-            processed_files = set()
-            
-            # 동영상 파일 수 확인
-            video_file_paths = []
-            video_file_names = []
-            for f in os.listdir(video_folder):
-                file_path = os.path.join(video_folder, f)
-                if os.path.isfile(file_path) and is_valid_video_file(file_path):
-                    video_file_paths.append(file_path)
-                    video_file_names.append(f)
-            
-            total_videos = len(video_file_paths)
-            if total_videos == 0:
-                print("❌ 처리할 동영상 파일이 없습니다.")
-                self.finish_process()
-                return
-            
-            print(f"✓ 총 {total_videos}개 동영상 파일을 처리합니다.")
-            print("✓ 발견된 동영상 파일:")
-            for i, fname in enumerate(video_file_names[:5], 1):  # 처음 5개만 출력
-                print(f"  {i}. {fname}")
-            if total_videos > 5:
-                print(f"  ... 외 {total_videos - 5}개")
-            
-            print(f"✓ 엑셀 파일 작업 현황 업데이트를 시작합니다...")
-            
-            # 메모리 정리
-            self.cleanup_memory()
-            
-            # 엑셀 처리 전에 엑셀 프로세스 확인
-            self.close_excel_file(excel_path)
-            
-            # 엑셀 파일 로드
-            print(f"✓ 엑셀 파일 로드 중: {os.path.basename(excel_path)}")
-            wb = load_workbook(excel_path)
-            
-            # 스타일 정의
-            blue_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')  # 하늘색
-            yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # 노란색
-            black_font = Font(color='000000', size=10)  # 검정색, 크기 10
-            
-            # 배관종류 리스트 하드코딩
-            PIPE_TYPE_LIST = ["입상관", "세대매립관", "세대PD", "세대층상배관", "횡주관"]
-            # 처리 제외할 배관종류
-            EXCLUDED_PIPE_TYPES = []  # 모든 배관종류 처리
-            
-            # 입력창 시트 확인
-            if '입력창' not in wb.sheetnames:
-                print("❌ 엑셀 파일에 '입력창' 시트가 없습니다.")
-                self.finish_process()
-                return
-                
-            ws_input = wb['입력창']
-            
-            # 1. 모든 배관종류와 범례 추출 (배관종류 -> {배관명 -> 번호})
-            pipe_types = {}  # 키: 배관종류, 값: {배관명 -> 번호} 사전
-            
-            print("✓ 배관종류 및 범례 정보 추출 중...")
-            
-            # 입력창 7행에서 하드코딩된 배관종류 찾기
-            col = 1
-            while col <= ws_input.max_column:
-                cell = ws_input.cell(row=7, column=col)
-                cell_value = str(cell.value).strip() if cell.value else ""
-                
-                # 하드코딩된 배관종류 리스트에 있고 제외 리스트에 없는 경우만 처리
-                if cell_value in PIPE_TYPE_LIST and cell_value not in EXCLUDED_PIPE_TYPES:
-                    pipe_type = cell_value
-                    pipe_start_col = col
-                    pipe_end_col = None
-                    
-                    # 병합셀 범위 확인
-                    for merged_cell in ws_input.merged_cells.ranges:
-                        if cell.coordinate in merged_cell:
-                            pipe_end_col = merged_cell.max_col
-                            break
-                    
-                    # 병합셀 범위가 확인되지 않았다면 다음 열을 확인하여 범위 추정
-                    if not pipe_end_col:
-                        next_col = pipe_start_col + 1
-                        while next_col <= ws_input.max_column:
-                            next_cell_value = ws_input.cell(row=7, column=next_col).value
-                            if next_cell_value and next_cell_value != cell.value:
-                                pipe_end_col = next_col - 1
-                                break
-                            next_col += 1
-                        
-                        # 마지막 열까지 모두 동일한 값이면
-                        if not pipe_end_col:
-                            pipe_end_col = ws_input.max_column
-                    
-                    # 해당 배관종류의 범례 추출
-                    legend = {}
-                    number = 1
-                    for legend_col in range(pipe_start_col, pipe_end_col + 1):
-                        val = ws_input.cell(row=8, column=legend_col).value
-                        if val is not None:
-                            legend[val] = str(number)
-                            number += 1
-                    
-                    # 배관종류와 범례 저장
-                    pipe_types[pipe_type] = legend
-                    
-                    # 다음 검색을 위해 열 위치 업데이트
-                    col = pipe_end_col + 1
-                else:
-                    col += 1
-            
-            # 배관종류 및 범례 정보 출력
-            print("✓ 추출된 배관종류 및 범례:")
-            for pipe_type, legend in pipe_types.items():
-                print(f"  • {pipe_type}: {legend}")
-            
-            # 결과 저장용 변수
-            updated_count = 0
-            total_updated_cells = 0
-            updated_pipe_types = set()
-            
-            # 3. 각 배관종류별로 처리
-            for pipe_type, pipe_legend in pipe_types.items():
-                # 해당 배관종류의 작업현황 시트 찾기
-                sheet_name = f"1.작업현황_{pipe_type.strip()}"
-                if sheet_name not in wb.sheetnames:
-                    print(f"❌ 시트를 찾을 수 없음: {sheet_name}")
-                    continue
-                
-                ws_target = wb[sheet_name]
-                print(f"\n✓ 처리 중인 시트: {sheet_name}")
-                
-                # 입상관인 경우 특별 처리
-                if pipe_type.strip() == "입상관":
-                    print("  • 입상관 처리 시작")
-                    
-                    # 동 및 라인 열 인덱스 설정
-                    building_col = 2  # B열
-                    line_col = 3      # C열
-                    
-                    # 3행에서 배관명 추출
-                    pipe_names = []
-                    column_to_pipe = {}  # 열 인덱스 -> 배관명 매핑
-                    
-                    # 입상관 범례에서 배관명 목록 가져오기
-                    valid_pipe_names = list(pipe_legend.keys())
-                    
-                    # 3행에서 실제 배관명만 추출
-                    for col_idx in range(1, ws_target.max_column + 1):
-                        cell_value = ws_target.cell(row=3, column=col_idx).value
-                        if cell_value and str(cell_value).strip() in valid_pipe_names:
-                            pipe_names.append(cell_value)
-                            column_to_pipe[col_idx] = cell_value
-                    
-                    # 동영상 파일에서 입상관 정보 추출
-                    riser_inspections = {}  # 키: (동, 라인), 값: set(배관명)
-                    
-                    # 파일별 입상관 처리 정보 저장용 변수
-                    processed_riser_files = {}  # 파일명: {"status": 성공여부, "building": 동, "line": 라인, "pipe": 배관명}
-                    
-                    # 입상관 파일 정보 추출
-                    for fname in video_file_names:
-                        # 파일명에서 정보 추출 (예: "102동 1903호 입상관 온수.mp4")
-                        m = re.match(r"(\d+)동\s*(\d+)호\s*(.+?)\s*(\S+)\.mp4", fname)
-                        if not m:
-                            print(f"  ⚠️ 파일명 형식이 맞지 않음: {fname}")
-                            # 파일 처리 실패 기록
-                            file_results[fname] = {
-                                "status": "실패",
-                                "pipe_type": "입상관",
-                                "reason": "파일명 형식이 맞지 않음"
-                            }
-                            processed_files.add(fname)
-                            continue
-                        
-                        building = int(m.group(1))
-                        unit_str = m.group(2)  # 예: "1903"
-                        video_pipe_type = m.group(3)  # 배관종류 (예: "입상관")
-                        pipe_name = m.group(4)  # 배관명 (예: "온수")
-                        
-                        # 원본 파이프 이름 저장 (로깅용)
-                        original_pipe_name = pipe_name
-                        
-                        # 먼저 '명판오류' 괄호를 제거
-                        if '(명판오류)' in pipe_name:
-                            pipe_name = pipe_name.replace('(명판오류)', '').strip()
-                            print(f"  • '명판오류' 괄호 제거: '{original_pipe_name}' → '{pipe_name}'")
-                        
-                        # 괄호 내용 저장 (있는 경우)
-                        parenthesis_content = None
-                        if '(' in pipe_name and ')' in pipe_name:
-                            # 괄호 안의 내용 추출
-                            match = re.search(r'\((.*?)\)', pipe_name)
-                            if match:
-                                parenthesis_content = match.group(1).strip()
-                                print(f"  • 괄호 내용 추출: '{parenthesis_content}'")
-                        
-                        # 배관명에서 괄호 이후 부분 제거
-                        if '(' in pipe_name:
-                            pipe_name = pipe_name.split('(')[0].strip()
-                            print(f"  • 괄호 처리: 배관명을 '{pipe_name}'으로 정리")
-                        
-                        print(f"  • 파일 분석: 동={building}, 호={unit_str}, 배관종류={video_pipe_type}, 배관명={pipe_name}")
-                        
-                        # 현재 처리 중인 배관종류와 일치하는지 확인
-                        if pipe_type.strip() not in video_pipe_type:
-                            # 배관종류 불일치 로그를 출력하지 않음
-                            # 처리된 파일 표시
-                            processed_files.add(fname)
-                            continue
-                            
-                        # 호수에서 라인 추출 (마지막 두 자리)
-                        line = None
-                        try:
-                            if len(unit_str) >= 3:
-                                line = int(unit_str[-2:])  # 마지막 두 자리
-                            elif len(unit_str) == 2:
-                                line = int(unit_str)       # 두 자리 전체
-                            elif len(unit_str) == 1:
-                                line = int(unit_str)       # 한 자리 전체
-                            else:
-                                # 파일 처리 실패 기록
-                                file_results[fname] = {
-                                    "status": "실패",
-                                    "pipe_type": pipe_type,
-                                    "reason": f"호수 형식 오류: {unit_str}"
-                                }
-                                # 처리된 파일 표시
-                                processed_files.add(fname)
-                                continue
-                        except ValueError:
-                            print(f"  ⚠️ 호수에서 라인 추출 실패: {unit_str}")
-                            # 파일 처리 실패 기록
-                            file_results[fname] = {
-                                "status": "실패",
-                                "pipe_type": pipe_type,
-                                "reason": f"호수에서 라인 추출 실패: {unit_str}"
-                            }
-                            # 처리된 파일 표시
-                            processed_files.add(fname)
-                            continue
-                        
-                        # 파일 정보 임시 저장 (아직 성공/실패 결정 안됨)
-                        processed_riser_files[fname] = {
-                            "building": building,
-                            "line": line,
-                            "pipe": pipe_name,
-                            "status": False  # 아직 처리 안됨
-                        }
-                        
-                        key = (building, line)
-                        if key not in riser_inspections:
-                            riser_inspections[key] = set()
-                        
-                        riser_inspections[key].add(pipe_name)
-                        print(f"  ✓ 추출 성공: 동={building}, 라인={line}, 배관={pipe_name}")
-                    
-                    # 배관종류별 결과 추가
-                    if pipe_type not in pipe_type_results:
-                        pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                    
-                    # 시트에서 행-동-라인 매핑
-                    all_rows_info = []  # 모든 행의 정보를 저장할 리스트
-                    
-                    # 병합 셀 처리를 위한 이전 동/라인 값 저장
-                    prev_building_val = None
-                    prev_line_val = None
-                    
-                    # 시트의 모든 동-라인 값 로깅 (디버깅용)
-                    print(f"  • 입상관 시트 동-라인 정보 분석 시작 (행 4 ~ {ws_target.max_row}):")
-                    
-                    for row_idx in range(4, ws_target.max_row + 1):
-                        building_val = ws_target.cell(row=row_idx, column=building_col).value
-                        line_val = ws_target.cell(row=row_idx, column=line_col).value
-                        
-                        # 디버깅용 원본 값 출력
-                        if building_val is not None or line_val is not None:
-                            print(f"    행 {row_idx}: 원본 동={building_val}, 라인={line_val}")
-                        
-                        # 병합 셀 처리: 값이 None이면 이전 값 사용
-                        if building_val is None:
-                            building_val = prev_building_val
-                        else:
-                            prev_building_val = building_val
-                        
-                        if line_val is None:
-                            line_val = prev_line_val
-                        else:
-                            prev_line_val = line_val
-                        
-                        if not building_val or not line_val:
-                            continue
-                        
-                        # 문자열로 변환하고 숫자만 추출
-                        building_str = str(building_val).strip()
-                        line_str = str(line_val).strip()
-                        
-                        # 디버깅용 변환 후 값 출력
-                        print(f"    행 {row_idx}: 처리 후 동={building_str}, 라인={line_str}")
-                        
-                        # 숫자 추출 (여러 숫자 패턴 시도)
-                        # 특별히 101동 처리 - 1동이 101동을 의미할 수 있음
-                        if building_str == "1동" or building_str == "1" or "1동" in building_str:
-                            building = 101
-                            print(f"    ✓ 특별 처리: 1동을 101동으로 인식")
-                        else:
-                            building_match = re.search(r'\d+', building_str)
-                            if not building_match:
-                                print(f"    ⚠️ 숫자 추출 실패: 동={building_str}, 라인={line_str}")
-                                continue
-                            building = int(building_match.group())
-                        
-                        line_match = re.search(r'\d+', line_str)
-                        if not line_match:
-                            print(f"    ⚠️ 숫자 추출 실패: 동={building_str}, 라인={line_str}")
-                            continue
-                        
-                        line = int(line_match.group())
-                        
-                        print(f"    ✓ 추출 성공: 동={building}, 라인={line}")
-                        all_rows_info.append((row_idx, building, line))
-                    
-                    # 디버깅용 - 모든 찾은 동-라인 정보 상세 출력
-                    print(f"  • 시트에서 추출한 행-동-라인 정보 ({len(all_rows_info)}개):")
-                    for row_idx, building, line in all_rows_info:
-                        print(f"    행 {row_idx}: 동={building}, 라인={line}")
-                    
-                    # 찾을 동-라인 정보 로깅
-                    print(f"  • 파일에서 추출한 동-라인 정보 ({len(riser_inspections)}개):")
-                    for (building, line), pipes in riser_inspections.items():
-                        pipe_names_str = ", ".join(pipes)
-                        print(f"    동={building}, 라인={line}, 배관={pipe_names_str}")
-                    
-                    # 시트와 파일 정보 간 매칭 시도
-                    matched_count = 0
-                    
-                    # 각 동-라인에 대한 검사 정보 처리
-                    for key, inspected_pipes in riser_inspections.items():
-                        building, line = key
-                        
-                        # 해당 동-라인이 있는 행 찾기 (더 유연한 매칭 시도)
-                        matching_rows = []
-                        
-                        # 정확한 매칭
-                        exact_matches = [row_idx for row_idx, bldg, ln in all_rows_info if bldg == building and ln == line]
-                        if exact_matches:
-                            matching_rows = exact_matches
-                            print(f"  ✓ 정확한 매치 발견: 동={building}, 라인={line}")
-                        
-                        # 매칭된 행이 없으면 조금 더 유연한 매칭 시도
-                        # 라인 번호만 일치하는 경우 (임시 조치)
-                        if not matching_rows:
-                            line_matches = [row_idx for row_idx, bldg, ln in all_rows_info if ln == line]
-                            if line_matches:
-                                print(f"  ⚠️ 라인 번호만 일치: 동={building}, 라인={line}")
-                                for row_idx in line_matches:
-                                    # 같은 동 건물의 다른 라인이라면 추가
-                                    matching_bldg = [bldg for r_idx, bldg, ln in all_rows_info if r_idx == row_idx][0]
-                                    print(f"    - 행 {row_idx}: 동={matching_bldg}, 라인={line}")
-                        
-                        # 최종 매칭 결과 처리
-                        if matching_rows:
-                            for row_idx in matching_rows:
-                                # 각 배관명에 대해 처리
-                                processed = False
-                                for col_idx, pipe_name in column_to_pipe.items():
-                                    if pipe_name in inspected_pipes:
-                                        cell = ws_target.cell(row=row_idx, column=col_idx)
-                                        
-                                        # 괄호 내용이 있는지 확인하여 다르게 표시
-                                        # 파일명에서 괄호 내용 확인을 위한 변수
-                                        has_parenthesis = False
-                                        content_to_display = "완료"
-                                        
-                                        # 해당 동-라인-배관과 일치하는 파일들 확인
-                                        for f_name, f_info in processed_riser_files.items():
-                                            if (f_info["building"] == building and 
-                                                f_info["line"] == line and 
-                                                (f_info["pipe"] == pipe_name)):
-                                                # 현재 처리 중인 파일에서 괄호 정보 가져오기
-                                                # '명판오류' 괄호를 제외한 다른 괄호만 찾기
-                                                original_filename = f_name  # 원본 파일명 저장
-                                                
-                                                # 먼저 '명판오류' 괄호 제거
-                                                clean_filename = f_name.replace('(명판오류)', '')
-                                                
-                                                # 남은 괄호 찾기
-                                                match = re.search(r'\((.*?)\)', clean_filename)
-                                                if match:
-                                                    has_parenthesis = True
-                                                    content_to_display = match.group(1).strip()
-                                                    print(f"  • 특이사항 추출: '{original_filename}' → '{content_to_display}'")
-                                                    break
-                                        
-                                        # 괄호 내용 또는 '완료' 표시
-                                        cell.value = content_to_display
-                                        
-                                        # 괄호 유무에 따라 다른 배경색 적용
-                                        if has_parenthesis:
-                                            cell.fill = yellow_fill  # 노란색 배경
-                                            print(f"  • [입상관] 동: {building}, 라인: {line}, 배관: {pipe_name} -> '{content_to_display}' 표시 (노란색, 행 {row_idx})")
-                                        else:
-                                            cell.fill = blue_fill    # 하늘색 배경
-                                            print(f"  • [입상관] 동: {building}, 라인: {line}, 배관: {pipe_name} -> '완료' 표시 (하늘색, 행 {row_idx})")
-                                        
-                                        cell.font = black_font
-                                        
-                                        updated_count += 1
-                                        total_updated_cells += 1
-                                        updated_pipe_types.add(pipe_type)
-                                        processed = True
-                                        
-                                        # 해당 동-라인-배관과 일치하는 파일들을 성공으로 표시
-                                        for f_name, f_info in processed_riser_files.items():
-                                            if (f_info["building"] == building and 
-                                                f_info["line"] == line and 
-                                                (f_info["pipe"] == pipe_name)):
-                                                # 파일 처리 성공 기록
-                                                file_results[f_name] = {
-                                                    "status": "성공",
-                                                    "pipe_type": pipe_type
-                                                }
-                                                processed_files.add(f_name)
-                                                f_info["status"] = True  # 처리 완료 표시
-                                                # 배관종류별 성공 결과 추가
-                                                if pipe_type not in pipe_type_results:
-                                                    pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                                                if f_name not in pipe_type_results[pipe_type]["files"]:
-                                                    pipe_type_results[pipe_type]["files"].append(f_name)
-                                
-                                if processed:
-                                    matched_count += 1
-                        else:
-                            # 매칭된 행이 없으면 수동 확인 필요
-                            pipe_names_str = ", ".join(inspected_pipes)
-                            print(f"  ⚠️ 동-라인 정보를 시트에서 찾을 수 없음: 동={building}, 라인={line}, 배관={pipe_names_str}")
-                            print(f"     ├── 작업 현황 시트를 수동 확인하세요.")
-                            print(f"     └── 가능한 원인: 1) 시트에 해당 동-라인이 없음, 2) 시트 구조가 예상과 다름, 3) 동-라인 표기 형식이 다름")
-                    
-                    # 매칭 결과 요약
-                    print(f"  • 입상관 처리 결과: {matched_count}/{len(riser_inspections)} 매칭됨")
-                    
-                    # 배관명 불일치로 매칭되지 않은 파일들에 대해 오류 상태 표시
-                    for f_name, f_info in processed_riser_files.items():
-                        if not f_info["status"]:  # 아직 처리되지 않은 파일
-                            # 동과 라인은 일치하지만 배관명이 불일치인 경우 확인
-                            for (check_building, check_line), _ in riser_inspections.items():
-                                if f_info["building"] == check_building and f_info["line"] == check_line:
-                                    # 배관명 불일치 오류로 표시
-                                    file_results[f_name] = {
-                                        "status": "실패",
-                                        "pipe_type": pipe_type,
-                                        "reason": f"배관명 불일치: {f_info['pipe']}"
-                                    }
-                                    processed_files.add(f_name)
-                                    # 배관종류별 실패 결과 추가
-                                    if pipe_type not in pipe_type_results:
-                                        pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                                    pipe_type_results[pipe_type]["failed"].append({"file": f_name, "reason": f"배관명 불일치: {f_info['pipe']}"})
-                                    print(f"  ⚠️ {f_name}: 동/라인은 일치하지만 배관명({f_info['pipe']})이 시트와 일치하지 않음")
-                                    break
-                else:
-                    # 기존 처리 (입상관 아닌 경우)
-                    # 세대별 검사된 배관 번호 모음
-                    inspected_by_unit = {}  # 키: (동, 호문자열), 값: set(배관번호 문자열들)
-                    
-                    # 파일별 처리 정보 저장용 변수
-                    processed_unit_files = {}  # 파일명: {"building": 동, "unit": 호수, "pipe_num": 배관번호, "processed": 처리여부}
-                    
-                    print(f"  • {pipe_type} 처리 시작 (비입상관 처리)")
-                    
-                    # 동 정보 동적 추출
-                    building_info = {}  # 동적으로 채울 동 정보
-                    print(f"  • 작업현황 시트에서 동 범위 찾는 중...")
-                    
-                    # 8행에서 동 정보 추출
-                    for col in range(1, ws_target.max_column + 1):
-                        cell_value = ws_target.cell(row=8, column=col).value
-                        if cell_value is not None and '동' in str(cell_value):
-                            dong_str = str(cell_value).strip()
-                            dong_match = re.search(r'(\d+)', dong_str)
-                            if dong_match:
-                                dong_num = int(dong_match.group(1))
-                                
-                                # 병합 셀 범위 확인
-                                merged_cell_found = False
-                                dong_start_col = col
-                                dong_end_col = col
-                                
-                                for merged_range in ws_target.merged_cells.ranges:
-                                    if merged_range.min_row <= 8 <= merged_range.max_row and merged_range.min_col <= col <= merged_range.max_col:
-                                        dong_start_col = merged_range.min_col
-                                        dong_end_col = merged_range.max_col
-                                        merged_cell_found = True
-                                        break
-                                
-                                # 라인 수 계산 (병합 셀 크기)
-                                lines = dong_end_col - dong_start_col + 1
-                                
-                                # 동 정보 저장
-                                building_info[dong_num] = {
-                                    "start_col": get_column_letter(dong_start_col),
-                                    "lines": lines
-                                }
-                                
-                                print(f"    ✓ {dong_num}동 정보 추출: 시작열={get_column_letter(dong_start_col)}, 끝열={get_column_letter(dong_end_col)}, 라인수={lines}")
-                                
-                                # 열 위치 업데이트 (병합 셀 다음부터 검색)
-                                if merged_cell_found:
-                                    col = dong_end_col
-                    
-                    # 동 정보가 추출되지 않은 경우 기본값 사용
-                    if not building_info:
-                        print(f"  ⚠️ 시트에서 동 정보를 찾을 수 없어 기본값 사용")
-                        building_info = {
-                            101: {"start_col": "A", "lines": 4}, 102: {"start_col": "H", "lines": 4},
-                            103: {"start_col": "O", "lines": 5}, 104: {"start_col": "W", "lines": 6},
-                            105: {"start_col": "AF", "lines": 4}, 106: {"start_col": "AM", "lines": 4},
-                            107: {"start_col": "AT", "lines": 4}, 108: {"start_col": "BA", "lines": 4},
-                            109: {"start_col": "BH", "lines": 4}, 110: {"start_col": "BO", "lines": 4},
-                        }
-                    
-                    print(f"  • 동 정보 요약:")
-                    for building, info in building_info.items():
-                        print(f"    동={building}, 시작열={info['start_col']}, 라인수={info['lines']}")
-                    
-                    for fname in video_file_names:
-                        # 파일명에서 정보 추출 (예: "102동 1903호 세대매립관 세탁.mp4")
-                        m = re.match(r"(\d+)동\s*(\d+)호\s*(.+?)\s*(\S+)\.mp4", fname)
-                        if not m:
-                            print(f"  ⚠️ 파일명 형식이 맞지 않음: {fname}")
-                            # 파일 처리 실패 기록
-                            file_results[fname] = {
-                                "status": "실패",
-                                "pipe_type": pipe_type,
-                                "reason": "파일명 형식이 맞지 않음"
-                            }
-                            processed_files.add(fname)
-                            continue
-                        
-                        building = int(m.group(1))
-                        unit_str = m.group(2)  # 예: "1903"
-                        video_pipe_type = m.group(3)  # 배관종류 (예: "세대매립관")
-                        pipe_name = m.group(4)  # 배관명 (예: "세탁")
-                        
-                        # 괄호 내용 저장 (있는 경우)
-                        parenthesis_content = None
-                        if '(' in pipe_name and ')' in pipe_name:
-                            # 괄호 안의 내용 추출
-                            match = re.search(r'\((.*?)\)', pipe_name)
-                            if match:
-                                parenthesis_content = match.group(1).strip()
-                                print(f"  • 괄호 내용 추출: '{parenthesis_content}'")
-                        
-                        # 배관명에서 괄호 이후 부분 제거
-                        if '(' in pipe_name:
-                            pipe_name = pipe_name.split('(')[0].strip()
-                            print(f"  • 괄호 처리: 배관명을 '{pipe_name}'으로 정리")
-                        
-                        # 현재 처리 중인 배관종류와 일치하는지 확인
-                        if pipe_type.strip() not in video_pipe_type:
-                            # 배관종류 불일치 로그를 출력하지 않음
-                            # 처리된 파일 표시
-                            processed_files.add(fname)
-                            continue
-                            
-                        # 배관종류가 일치하는 경우에만 파일 정보 출력
-                        print(f"  • 파일 분석: 동={building}, 호={unit_str}, 배관종류={video_pipe_type}, 배관명={pipe_name}")
-                        
-                        # (building, unit_str) 키가 없으면 초기화
-                        if (building, unit_str) not in inspected_by_unit:
-                            inspected_by_unit[(building, unit_str)] = set()
-                        
-                        # 범례 사전으로 배관명을 번호로 변환하여 저장
-                        if pipe_name in pipe_legend:
-                            pipe_num = pipe_legend[pipe_name]
-                            inspected_by_unit[(building, unit_str)].add(pipe_num)
-                            updated_pipe_types.add(pipe_type)
-                            print(f"  ✓ 추출 성공: 동={building}, 호={unit_str}, 배관={pipe_name}, 번호={pipe_legend[pipe_name]}")
-                            
-                            # 파일 정보 임시 저장
-                            processed_unit_files[fname] = {
-                                "building": building,
-                                "unit": unit_str,
-                                "pipe_num": pipe_num,
-                                "processed": False  # 아직 처리 안됨
-                            }
-                        else:
-                            print(f"  ⚠️ 범례에 없는 배관명: {pipe_name}")
-                            # 파일 처리 실패 기록
-                            file_results[fname] = {
-                                "status": "실패",
-                                "pipe_type": pipe_type,
-                                "reason": f"범례에 없는 배관명: {pipe_name}"
-                            }
-                            # 배관종류별 실패 결과 추가
-                            if pipe_type not in pipe_type_results:
-                                pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                            pipe_type_results[pipe_type]["failed"].append({"file": fname, "reason": f"범례에 없는 배관명: {pipe_name}"})
-                    
-                    # 세대 위치에 배관번호 기록 - 하드코딩된 building_info 제거
-                    
-                    # 처리 결과 추적
-                    processed_units = 0
-                    
-                    from openpyxl.utils import column_index_from_string
-                    
-                    for (building, unit_str), pipes in inspected_by_unit.items():
-                        if building not in building_info:
-                            print(f"  ⚠️ {building}동 정보가 없어 처리할 수 없습니다.")
-                            continue
-                            
-                        # 층과 라인 계산
-                        try:
-                            if len(unit_str) >= 4:  # 4자리 호수(예: 1105)
-                                floor = int(unit_str[:2])  # 앞 두 자리를 층수로
-                                line = int(unit_str[2:])   # 뒤 두 자리를 호수로
-                            elif len(unit_str) == 3:  # 3자리 호수
-                                # 첫 자리가 1이고 다음 자리가 0이 아니면 두 자리를 층수로
-                                if unit_str[0] == '1' and unit_str[1] != '0':
-                                    floor = int(unit_str[:2])
-                                    line = int(unit_str[2:])
-                                else:
-                                    floor = int(unit_str[0])
-                                    line = int(unit_str[1:])
-                            else:  # 2자리 이하 (25호, 5호 등)
-                                floor = int(unit_str[0]) if len(unit_str) >= 2 else 1
-                                line = int(unit_str[1:]) if len(unit_str) >= 2 else int(unit_str)
-                            
-                            # 시트에서 1층 위치 찾기
-                            first_floor_row = None
-                            for row_idx in range(6, ws_target.max_row + 1):
-                                cell_value = ws_target.cell(row=row_idx, column=1).value  # A열
-                                if cell_value is not None:
-                                    cell_str = str(cell_value).strip()
-                                    if cell_str == "1층":
-                                        first_floor_row = row_idx
-                                        print(f"  ✓ 시트에서 1층 위치 찾음: {first_floor_row}행 (A열)")
-                                        break
-                            
-                            # 1층을 찾지 못했다면 B열에서도 확인
-                            if not first_floor_row:
-                                for row_idx in range(6, ws_target.max_row + 1):
-                                    cell_value = ws_target.cell(row=row_idx, column=2).value  # B열
-                                    if cell_value is not None:
-                                        cell_str = str(cell_value).strip()
-                                        if cell_str == "1층":
-                                            first_floor_row = row_idx
-                                            print(f"  ✓ 시트에서 1층 위치 찾음: {first_floor_row}행 (B열)")
-                                            break
-                            
-                            # 1층을 찾지 못한 경우 하드코딩된 값 사용
-                            if not first_floor_row:
-                                print(f"  ⚠️ 시트에서 1층을 찾을 수 없어 기본값 사용")
-                                row = 41 - floor
-                            else:
-                                # 1층을 기준으로 층수에 따른 행 계산
-                                row = first_floor_row - (floor - 1)  # 1층보다 위층은 행번호가 작아짐
-                            
-                            # 동이 정의되어 있지 않으면 오류 메시지 출력
-                            if building not in building_info:
-                                print(f"  ⚠️ {building}동 정보가 없어 처리할 수 없습니다.")
-                                continue
-
-                            # 시작 열 인덱스 계산
-                            start_col_index = column_index_from_string(building_info[building]["start_col"])
-                            
-                            # 라인 번호가 동의 라인 수를 초과하는지 확인
-                            max_line = building_info[building]["lines"]
-                            line_adjusted = False
-                            if line > max_line:
-                                print(f"  ⚠️ 라인 번호({line})가 {building}동의 최대 라인 수({max_line})를 초과합니다.")
-                                # 최대 라인으로 제한
-                                line = max_line
-                                line_adjusted = True
-                                print(f"  ⚠️ 라인 번호를 {line}으로 조정합니다.")
-                            
-                            # 열 인덱스 계산 (해당 동의 시작열 + 라인 - 1)
-                            # 라인은 1부터 시작하므로 1을 빼서 0부터 시작하는 인덱스로 변환
-                            target_col_index = start_col_index + line - 1
-                            
-                            # 디버깅 정보
-                            print(f"  • 계산 정보: 동={building}, 호={unit_str} -> 층={floor}, 라인={line}")
-                            print(f"    -> 행={row}, 열 기준={building_info[building]['start_col']}({start_col_index}), 계산 열={target_col_index}")
-                            
-                            # 범위 검증
-                            if row < 1 or row > ws_target.max_row:
-                                print(f"  ⚠️ 계산된 행({row})이 범위를 벗어남: 1~{ws_target.max_row}")
-                                continue
-                                
-                            if target_col_index < 1 or target_col_index > ws_target.max_column:
-                                print(f"  ⚠️ 계산된 열({target_col_index})이 범위를 벗어남: 1~{ws_target.max_column}")
-                                continue
-                            
-                            # 해당 열의 마지막행번호-1 행의 셀값 확인
-                            last_row = ws_target.max_row
-                            if last_row <= 1:
-                                print(f"  ⚠️ 시트 행 범위 오류: max_row={last_row}")
-                                continue
-                                
-                            reference_cell = ws_target.cell(row=last_row-1, column=target_col_index)
-                            reference_value = reference_cell.value
-                            print(f"    → 참조값: {reference_value}")
-                            
-                            # 셀 값 설정 및 스타일 적용
-                            cell = ws_target.cell(row=row, column=target_col_index)
-                            current_value = cell.value
-                            print(f"    → 현재 셀값: {current_value}")
-                            
-                            if pipes:
-                                # 번호들을 "/"로 연결하여 입력
-                                pipe_str = "/".join(sorted(pipes, key=lambda x: int(x)))
-                                
-                                # 참조 셀 값과 비교
-                                if pipe_str == reference_value:
-                                    cell.value = "완료"
-                                    cell.fill = blue_fill
-                                    print(f"    ✓ '완료' 표시 (reference 일치)")
-                                else:
-                                    cell.value = pipe_str
-                                    cell.fill = yellow_fill
-                                    print(f"    ✓ '{pipe_str}' 표시 (reference 불일치)")
-                                    
-                                cell.font = black_font
-                                print(f"  • [{pipe_type}] 동: {building}, 호수: {unit_str} -> {pipe_str} 처리")
-                                updated_count += 1
-                                total_updated_cells += 1
-                                processed_units += 1
-                                
-                                # 해당 동-호에 해당하는 파일들을 모두 성공으로 표시
-                                for f_name, f_info in processed_unit_files.items():
-                                    if f_info["building"] == building and f_info["unit"] == unit_str:
-                                        # 라인 번호가 조정된 경우 실패로 처리
-                                        if line_adjusted:
-                                            # 파일 처리 실패 기록
-                                            file_results[f_name] = {
-                                                "status": "실패",
-                                                "pipe_type": pipe_type,
-                                                "reason": f"라인 번호({line + 1})가 {building}동의 최대 라인 수({max_line})를 초과하여 조정됨"
-                                            }
-                                        else:
-                                            # 파일 처리 성공 기록
-                                            file_results[f_name] = {
-                                                "status": "성공",
-                                                "pipe_type": pipe_type
-                                            }
-                                        processed_files.add(f_name)
-                                        f_info["processed"] = True  # 처리 완료 표시
-                                        
-                                        # 배관종류별 결과 추가
-                                        if pipe_type not in pipe_type_results:
-                                            pipe_type_results[pipe_type] = {"files": [], "failed": []}
-                                        
-                                        if line_adjusted:
-                                            # 실패 결과에 추가
-                                            pipe_type_results[pipe_type]["failed"].append({
-                                                "file": f_name, 
-                                                "reason": f"라인 번호({line + 1})가 {building}동의 최대 라인 수({max_line})를 초과하여 조정됨"
-                                            })
-                                        elif f_name not in pipe_type_results[pipe_type]["files"]:
-                                            pipe_type_results[pipe_type]["files"].append(f_name)
-                            else:
-                                cell.value = None  # 점검된 배관 없으면 비워둠
-                                print(f"    ⚠️ 처리할 배관 정보 없음")
-                        except Exception as e:
-                            print(f"  ❌ 처리 중 오류 발생: {str(e)}")
-                            continue
-                    
-                    # 처리 결과 요약
-                    print(f"  • {pipe_type} 처리 결과: {processed_units}/{len(inspected_by_unit)} 처리됨")
-            
-            # 수정된 내용을 원본 파일로 저장
-            output_path = excel_path
-            try:
-                wb.save(output_path)
-                print(f"\n✓ 파일 저장 완료: {os.path.basename(output_path)}")
-                
-                # 파일별 성공/실패 요약 계산
-                success_count = sum(1 for result in file_results.values() if result.get("status") == "성공")
-                failed_count = sum(1 for result in file_results.values() if result.get("status") == "실패")
-                skipped_count = total_videos - success_count - failed_count
-                
-                # 작업 결과 요약 표시
-                print("\n[ 작업 결과 요약 ]")
-                print(f"• 처리한 동영상 파일: {total_videos}개")
-                print(f"• 업데이트된 세대/라인 수: {updated_count}개")
-                print(f"• 업데이트된 셀 수: {total_updated_cells}개")
-                print(f"• 처리된 배관종류: {', '.join(updated_pipe_types) if updated_pipe_types else '없음'}")
-                
-                # 파일별 성공/실패 요약 추가
-                print(f"\n[ 파일별 처리 결과 ]")
-                
-                # ANSI 색상 코드 제거
-                
-                # 작업폴더의 모든 동영상 파일을 표시
-                for fname in video_file_names:
-                    if fname in file_results:
-                        status = file_results[fname].get("status", "")
-                        reason = file_results[fname].get("reason", "")
-                        
-                        if status == "성공":
-                            print(f"• {fname}: 성공")
-                        elif status == "실패":
-                            print(f"• {fname}: 실패 - {reason}")
-                        elif status == "건너뜀":
-                            if "배관명 불일치" in reason:
-                                print(f"• {fname}: 오류 - {reason}")
-                            else:
-                                print(f"• {fname}: 건너뜀 - {reason}")
-                    else:
-                        # 결과가 없는 파일은 처리되지 않음으로 표시
-                        print(f"• {fname}: 오류 - 처리되지 않음")
-                        # 파일 정보 추가
-                        file_results[fname] = {
-                            "status": "건너뜀", 
-                            "reason": "처리되지 않음"
-                        }
-                
-                # 추가 안내 메시지
-                if updated_count == 0:
-                    print("\n⚠️ 세대/라인 정보가 하나도 업데이트되지 않았습니다. 가능한 원인:")
-                    print("  1. 동영상 파일명 형식이 '[동] [호] [배관종류] [배관명]' 형식과 다릅니다.")
-                    print("  2. 시트 구조가 예상과 다릅니다 (행/열 위치, 형식 등).")
-                    print("  3. 동영상에 표시된 배관 종류와 배관명이 시트에 없습니다.")
-                
-                # 마지막 확인: 모든 파일이 처리됐는지 확인
-                for fname in video_file_names:
-                    if fname not in file_results and fname not in processed_files:
-                        file_results[fname] = {
-                            "status": "건너뜀", 
-                            "reason": "처리되지 않음"
-                        }
-                    elif fname not in processed_files and fname in file_results:
-                        if file_results[fname].get("status") != "성공" and file_results[fname].get("status") != "실패":
-                            file_results[fname]["status"] = "건너뜀"
-                            if "reason" not in file_results[fname]:
-                                file_results[fname]["reason"] = "처리되지 않음"
-                
-            except Exception as e:
-                print(f"❌ 파일 저장 중 오류: {str(e)}")
-                print("다른 프로그램에서 파일을 열고 있는지 확인하세요.")
-            
-            # COM 객체 정리 및 메모리 정리
-            self.cleanup_com_objects()
-            self.cleanup_memory()
-            
-            # 작업 완료 후 한번 더 엑셀 프로세스 종료 확인
-            time.sleep(0.5)  # 잠시 대기 후 프로세스 확인
-            self.close_excel_file(excel_path)
-            
-        except Exception as e:
-            print(f"\n❌ 예상치 못한 오류 발생: {str(e)}")
-            import traceback
-            print(traceback.format_exc())  # 디버깅을 위한 스택 트레이스 출력
-        finally:
-            self.finish_process()
-
     def process_in_thread(self, current_mode, work_dir, output_dir, frame_times):
         """별도 스레드에서 작업 실행"""
         try:
-            # 모드에 따라 다른 처리 실행
-            if current_mode == "rename":
-                print(f"• 모드: 파일명 변경")
-                print(f"• 분석 방법: Vision API + ChatGPT")
-                print(f"• 프레임 시간: {', '.join(map(str, frame_times))}초")
-                print(f"• 처리량 조절 적용됨")
-                
-                # 파일명 변경 모드 작업 실행
-                self.process_videos(work_dir, output_dir, frame_times)
-            elif current_mode == "excel":
-                # 이미지 삽입 모드 작업 실행
-                excel_path = self.excel_path.get()
-                print(f"• 모드: 이미지 삽입")
-                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
-                
-                self.process_excel(work_dir, excel_path)
-            elif current_mode == "update_pipe":
-                # 이상위치 업데이트 모드 작업 실행
-                excel_path = self.excel_path.get()
-                print(f"• 모드: 이상위치 업데이트")
-                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
-                
-                self.process_excel(work_dir, excel_path)
-            elif current_mode == "update_status":
-                # 작업 현황 업데이트 모드 작업 실행
-                excel_path = self.excel_path.get()
-                print(f"• 모드: 작업 현황 업데이트")
-                print(f"• 엑셀 파일: {os.path.basename(excel_path)}")
-                
-                self.update_status_excel(work_dir, excel_path)
+            # 파일명 변경 모드 작업 실행
+            print(f"• 모드: 파일명 변경")
+            print(f"• 분석 방법: Vision API + ChatGPT")
+            print(f"• 프레임 시간: {', '.join(map(str, frame_times))}초")
+            print(f"• 처리량 조절 적용됨")
+            
+            # 파일명 변경 모드 작업 실행
+            self.process_videos(work_dir, output_dir, frame_times)
             
         except Exception as e:
             print(f"\n❌ 예상치 못한 오류 발생: {str(e)}")
@@ -2341,14 +1176,14 @@ class TaskieXApp:
 def main():
     """메인 함수: 애플리케이션 시작"""
     # 프로그램 시작 로그
-    logger.info("TaskieX 애플리케이션 시작")
+    logger.info("FileRenamerX 애플리케이션 시작")
     
     # Tkinter 루트 윈도우 생성
     root = tk.Tk()
     
     try:
         # 애플리케이션 인스턴스 생성
-        app = TaskieXApp(root)
+        app = FileRenamerXApp(root)
         
         # 시스템 종료 시 표준 출력 복원을 위해 참조 저장
         old_stdout = sys.stdout
@@ -2366,9 +1201,6 @@ def main():
     finally:
         # 표준 출력 복원
         sys.stdout = old_stdout
-        logger.info("TaskieX 애플리케이션 종료")
 
 if __name__ == "__main__":
-    main() 
-    
-# pyinstaller --noconsole app_gui.py
+    main()
