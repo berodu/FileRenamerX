@@ -311,9 +311,6 @@ class FileRenamerXApp:
         # 1. 설정 프레임
         self.create_settings_frame(main_frame)
         
-        # 3. 도움말 프레임
-        self.create_help_frame(main_frame)
-        
         # 4. 버튼 프레임
         self.create_button_frame(main_frame)
         
@@ -346,30 +343,6 @@ class FileRenamerXApp:
         self.path_label = ttk.Label(self.folder_button_frame, text="./작업폴더")
         self.path_label.pack(side=tk.LEFT, padx=5)
 
-    def create_help_frame(self, parent):
-        """도움말 프레임 생성"""
-        self.help_frame = ttk.LabelFrame(parent, text="프로그램 사용 안내", padding=10)
-        self.help_frame.pack(fill=tk.X, pady=5)
-        
-        # 도움말 텍스트 위젯
-        self.help_text = tk.Text(
-            self.help_frame, 
-            wrap=tk.WORD, 
-            height=5, 
-            font=("Malgun Gothic", 9)
-        )
-        self.help_text.pack(fill=tk.X)
-        
-        # 굵은 글씨 스타일 설정
-        self.help_text.tag_configure("bold", font=("Malgun Gothic", 9, "bold"))
-        
-        # 초기 도움말 텍스트 설정
-        self.help_text.insert(tk.END, "파일명 변경 모드\n", "bold")
-        self.help_text.insert(tk.END, "작업 폴더 : 비디오 파일과 이미지 파일이 있는 폴더\n")
-        self.help_text.insert(tk.END, "프레임 시간 : 비디오에서 추출할 프레임 시간(초)\n")
-        self.help_text.insert(tk.END, "바로에코 제품으로 인코딩된 동영상만 처리 가능합니다.\n")
-        self.help_text.configure(state='disabled')
-
     def create_button_frame(self, parent):
         """버튼 프레임 생성"""
         button_frame = ttk.Frame(parent)
@@ -378,7 +351,7 @@ class FileRenamerXApp:
         # 시작 버튼
         self.start_button = ttk.Button(
             button_frame, 
-            text="시작", 
+            text="작업시작", 
             command=self.start_process
         )
         self.start_button.pack(side=tk.LEFT, padx=5)
@@ -695,34 +668,6 @@ class FileRenamerXApp:
             # 비디오 프로세서 및 이미지 분석기 초기화
             print("✓ 작업 초기화 중...")
             video_processor = VideoProcessor(work_dir, output_dir)
-            
-            # 동영상 파일 메타데이터 검증
-            print("✓ 동영상 파일 메타데이터 검증 중...")
-            video_files = [f for f in os.listdir(work_dir) 
-                          if os.path.isfile(os.path.join(work_dir, f)) and 
-                          is_valid_video_file(os.path.join(work_dir, f))]
-            
-            if video_files:
-                invalid_files = []
-                for video_file in video_files:
-                    video_path = os.path.join(work_dir, video_file)
-                    is_valid, error_msg = video_processor.validate_video_metadata(video_path)
-                    if not is_valid:
-                        invalid_files.append((video_file, error_msg))
-                        print(f"  ❌ {video_file}: 바로에코 제품을 사용해 주세요")
-                
-                if invalid_files:
-                    # 검증 실패 시 팝업 표시 및 작업 중단
-                    error_message = "바로에코 제품을 사용해 주세요"
-                    
-                    # 메인 스레드에서 팝업 표시를 위해 root.after 사용
-                    self.root.after(0, lambda: messagebox.showerror("동영상 파일 검증 실패", error_message))
-                    self.finish_process()
-                    return
-                else:
-                    print(f"  ✓ 모든 동영상 파일 검증 완료 ({len(video_files)}개)")
-            else:
-                print("  ⚠️ 동영상 파일이 없습니다. 이미지 파일만 처리합니다.")
             
             # 분석기 초기화
             try:

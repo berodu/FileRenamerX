@@ -8,8 +8,6 @@ import shutil
 import numpy as np
 from PIL import Image
 import time
-import subprocess
-import json
 
 class VideoProcessor:
     def __init__(self, video_dir, output_dir):
@@ -32,7 +30,7 @@ class VideoProcessor:
     
     def validate_video_metadata(self, video_path):
         """
-        동영상 파일의 메타데이터를 검증
+        동영상 파일의 유효성을 검사 (파일 존재 여부만 확인)
         
         Args:
             video_path (str): 비디오 파일 경로
@@ -49,104 +47,10 @@ class VideoProcessor:
             if not os.access(video_path, os.R_OK):
                 return False, "파일 읽기 권한이 없습니다"
             
-            # ffprobe 실행 가능 여부 확인
-            try:
-                # ffprobe 버전 확인으로 실행 가능 여부 체크
-                check_result = subprocess.run(
-                    ['ffprobe', '-version'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=5
-                )
-                if check_result.returncode != 0:
-                    return False, "ffprobe를 실행할 수 없습니다. FFmpeg가 설치되어 있는지 확인하세요."
-            except FileNotFoundError:
-                return False, "ffprobe를 찾을 수 없습니다. FFmpeg가 설치되어 있고 PATH에 등록되어 있는지 확인하세요."
-            
-            # ffprobe를 사용하여 메타데이터 조회
-            # Windows 경로에 공백이나 특수문자가 있을 수 있으므로 따옴표로 감싸지 않고 직접 전달
-            cmd = [
-                'ffprobe',
-                '-v', 'error',
-                '-print_format', 'json',
-                '-show_format',
-                '-show_streams',
-                video_path
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=30,
-                encoding='utf-8',
-                errors='ignore'  # 인코딩 오류 무시
-            )
-            
-            # stderr에 오류 메시지가 있는지 확인
-            if result.stderr and result.stderr.strip():
-                # 실제 오류 메시지 추출
-                error_lines = [line.strip() for line in result.stderr.split('\n') 
-                              if line.strip()]
-                if error_lines:
-                    # 첫 번째 의미있는 오류 메시지 반환
-                    for line in error_lines:
-                        if any(keyword in line.lower() for keyword in ['error', 'invalid', 'cannot', 'unable', 'failed']):
-                            return False, f"ffprobe 오류: {line}"
-                    # 오류 키워드가 없어도 stderr가 있으면 반환
-                    return False, f"ffprobe 경고/오류: {error_lines[0]}"
-            
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr and result.stderr.strip() else "알 수 없는 오류"
-                return False, f"메타데이터 조회 실패 (반환 코드: {result.returncode}): {error_msg}"
-            
-            # stdout이 비어있는지 확인
-            if not result.stdout or not result.stdout.strip():
-                # stderr에 더 자세한 정보가 있을 수 있음
-                if result.stderr and result.stderr.strip():
-                    return False, f"메타데이터 출력이 없습니다: {result.stderr.strip()}"
-                else:
-                    return False, "메타데이터 출력이 없습니다 (파일이 손상되었거나 지원하지 않는 형식일 수 있습니다)"
-            
-            # JSON 파싱
-            try:
-                metadata = json.loads(result.stdout)
-            except json.JSONDecodeError as e:
-                return False, f"메타데이터 파싱 실패: {str(e)}"
-            except TypeError as e:
-                return False, f"메타데이터 파싱 실패: {str(e)}"
-            
-            # 인코더 확인 (format 섹션에서)
-            encoder = None
-            if 'format' in metadata and 'tags' in metadata['format']:
-                encoder = metadata['format']['tags'].get('encoder', '')
-            
-            # 코덱 확인 (streams 섹션에서)
-            codec = None
-            if 'streams' in metadata and len(metadata['streams']) > 0:
-                # 비디오 스트림 찾기
-                for stream in metadata['streams']:
-                    if stream.get('codec_type') == 'video':
-                        codec = stream.get('codec_name', '')
-                        break
-            
-            # 검증: 인코더가 Lavf56.25.101인지 확인
-            if not encoder or 'Lavf56.25.101' not in encoder:
-                return False, f"인코더가 올바르지 않습니다. (현재: {encoder}, 요구: Lavf56.25.101)"
-            
-            # 검증: 코덱이 hevc인지 확인
-            if not codec or codec.lower() not in ['hevc', 'h265', 'h.265']:
-                return False, f"코덱이 올바르지 않습니다. (현재: {codec}, 요구: HEVC/H.265)"
-            
             return True, ""
             
-        except FileNotFoundError:
-            return False, "ffprobe를 찾을 수 없습니다. FFmpeg가 설치되어 있는지 확인하세요."
-        except subprocess.TimeoutExpired:
-            return False, "메타데이터 조회 시간 초과"
         except Exception as e:
-            return False, f"메타데이터 검증 중 오류: {str(e)}"
+            return False, f"파일 확인 중 오류: {str(e)}"
     
     def extract_frames(self, video_file, frame_times):
         """
